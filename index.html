@@ -8,12 +8,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- 🔥 Firebase SDK (Modüler) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  // 🔧 SENİN FIREBASE CONFIG'İN
   const firebaseConfig = {
     apiKey: "AIzaSyDFJcSee_FgEd60iQSf5wGCjU9GxrGG41M",
     authDomain: "atto3takip.firebaseapp.com",
@@ -24,20 +22,18 @@
     measurementId: "G-ZQCDT9F6EY"
   };
 
-  // Firebase başlat
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const chargesRef = collection(db, "charges");
 
-  // Global değişkenler
   let data = [];
   let currentKm = parseFloat(localStorage.getItem('byd_km')) || 0;
   let filter = 'all';
   let viewYear = new Date().getFullYear();
   let viewMonth = new Date().getMonth();
   let syncEnabled = false;
+  let migrationDone = localStorage.getItem('atto3_migration_done') === 'true';
 
-  // 🔐 ŞİFRE: Beko1905+
   const APP_PASSWORD = "Beko1905+";
   
   function checkPassword() {
@@ -62,7 +58,52 @@
     }
   }
 
-  // 📡 Firebase'den gerçek zamanlı veri çek
+  // 🔁 MIGRATION: localStorage → Firebase
+  async function migrateLocalData() {
+    if (migrationDone) return;
+    
+    const localData = JSON.parse(localStorage.getItem('byd_charges') || '[]');
+    if (localData.length === 0) {
+      localStorage.setItem('atto3_migration_done', 'true');
+      return;
+    }
+
+    console.log(`🔄 ${localData.length} kayıt Firebase'e aktarılıyor...`);
+    
+    // Firebase'deki mevcut kayıtları çek (duplicate önlemek için)
+    const existingSnap = await getDocs(query(chargesRef, orderBy('date', 'desc')));
+    const existingSet = new Set();
+    existingSnap.docs.forEach(d => {
+      const dt = d.data();
+      existingSet.add(`${dt.date}|${dt.kwh}|${dt.price}`);
+    });
+
+    let uploaded = 0;
+    for (const item of localData) {
+      const key = `${item.date}|${item.kwh}|${item.price}`;
+      if (!existingSet.has(key)) {
+        try {
+          await addDoc(chargesRef, {
+            date: item.date,
+            type: item.type,
+            kwh: item.kwh,
+            price: item.price,
+            note: item.note || '',
+            id: item.id,
+            createdAt: serverTimestamp()
+          });
+          uploaded++;
+        } catch (e) {
+          console.error("Upload error:", e);
+        }
+      }
+    }
+    
+    console.log(`✅ ${uploaded} yeni kayıt yüklendi.`);
+    localStorage.setItem('atto3_migration_done', 'true');
+    migrationDone = true;
+  }
+
   function startSync() {
     const q = query(chargesRef, orderBy('date', 'desc'));
     onSnapshot(q, (snapshot) => {
@@ -78,7 +119,6 @@
     });
   }
 
-  // ☁️ Firebase'e yeni kayıt ekle
   async function syncAddCharge(charge) {
     if (!syncEnabled) return;
     try {
@@ -91,7 +131,6 @@
     }
   }
 
-  // ☁️ Firebase'den kayıt sil
   async function syncDeleteCharge(firebaseId) {
     if (!syncEnabled) return;
     try {
@@ -101,30 +140,25 @@
     }
   }
 
-  // 🌍 Global scope'a fonksiyonları aç
   window.login = login;
   window.checkPassword = checkPassword;
   window.syncAddCharge = syncAddCharge;
   window.syncDeleteCharge = syncDeleteCharge;
 
-  // 🚀 Uygulama başlangıcı
-  function initApp() {
+  async function initApp() {
     document.getElementById('fDate').valueAsDate = new Date();
     if(currentKm > 0) document.getElementById('fCurrentKm').value = currentKm;
 
-    const localData = JSON.parse(localStorage.getItem('byd_charges') || '[]');
-    if (localData.length > 0) {
-      data = localData;
-      renderAll();
-    }
+    // Önce migration çalıştır (eski verileri yükle)
+    await migrateLocalData();
+    
+    // Sonra senkronizasyonu başlat
     startSync();
   }
 
   document.addEventListener('DOMContentLoaded', checkPassword);
 
-  window.save = function() { 
-    localStorage.setItem('byd_charges', JSON.stringify(data)); 
-  }
+  window.save = function() { localStorage.setItem('byd_charges', JSON.stringify(data)); }
 
   window.saveKm = function() {
     const km = parseFloat(document.getElementById('fCurrentKm').value);
@@ -133,9 +167,7 @@
       localStorage.setItem('byd_km', currentKm);
       renderGlobal();
       showToast();
-    } else {
-      alert("Lütfen geçerli bir kilometre giriniz.");
-    }
+    } else { alert("Lütfen geçerli bir kilometre giriniz."); }
   }
 
   window.addCharge = async function() {
@@ -167,9 +199,7 @@
     data = data.filter(d => d.id !== id);
     localStorage.setItem('byd_charges', JSON.stringify(data));
     renderAll();
-    if (item?.firebaseId) {
-      await syncDeleteCharge(item.firebaseId);
-    }
+    if (item?.firebaseId) await syncDeleteCharge(item.firebaseId);
   }
 
   window.exportCSV = function() {
@@ -202,23 +232,14 @@
 
   window.prevMonth = function() { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderAll(); }
   window.nextMonth = function() { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } renderAll(); }
-
   window.monthData = function() {
-    return data.filter(d => {
-      const dt = new Date(d.date);
-      return dt.getFullYear() === viewYear && dt.getMonth() === viewMonth;
-    });
+    return data.filter(d => { const dt = new Date(d.date); return dt.getFullYear() === viewYear && dt.getMonth() === viewMonth; });
   }
-
   window.renderAll = function() {
     document.getElementById('monthLabel').textContent = MONTHS_TR[viewMonth] + ' ' + viewYear;
     document.getElementById('yearTitle').textContent = viewYear;
-    renderStats();
-    renderGlobal();
-    renderTable();
-    renderBars();
+    renderStats(); renderGlobal(); renderTable(); renderBars();
   }
-
   window.renderGlobal = function() {
     const yearData = data.filter(d => new Date(d.date).getFullYear() === viewYear);
     const yearKwh = yearData.reduce((s,d) => s + d.kwh, 0);
@@ -229,7 +250,6 @@
     animateValue('valYearKwh', 0, yearKwh, 400);
     animateValue('valYearCost', 0, yearCost, 400);
   }
-
   window.renderStats = function() {
     const md = monthData();
     const ac = md.filter(d => d.type === 'AC');
@@ -238,37 +258,13 @@
     const acKwh = ac.reduce((s,d) => s+d.kwh, 0);
     const dcKwh = dc.reduce((s,d) => s+d.kwh, 0);
     const totalCost = md.reduce((s,d) => s+d.kwh*d.price, 0);
-
     document.getElementById('stats').innerHTML = `
-      <div class="stat-card total">
-        <div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg> Aylık Toplam Şarj</div>
-        <div class="stat-value"><span id="animTotKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
-        <div class="stat-sub">${md.length} seans</div>
-      </div>
-      <div class="stat-card ac-card">
-        <div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg> Aylık AC Şarj</div>
-        <div class="stat-value"><span id="animAcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
-        <div class="stat-sub">${ac.length} seans · ₺${ac.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div>
-      </div>
-      <div class="stat-card dc-card">
-        <div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg> Aylık DC Şarj</div>
-        <div class="stat-value"><span id="animDcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
-        <div class="stat-sub">${dc.length} seans · ₺${dc.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div>
-      </div>
-      <div class="stat-card cost-card">
-        <div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg> Aylık Toplam Maliyet</div>
-        <div class="stat-value"><span id="animTotCost" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>₺</span></div>
-        <div class="stat-sub">${totalKwh > 0 ? '~₺'+(totalCost/totalKwh).toFixed(2)+'/kWh ort.' : '—'}</div>
-      </div>
-    `;
-    setTimeout(() => {
-      animateValue('animTotKwh', 0, totalKwh, 400);
-      animateValue('animAcKwh', 0, acKwh, 400);
-      animateValue('animDcKwh', 0, dcKwh, 400);
-      animateValue('animTotCost', 0, totalCost, 400);
-    }, 50);
+      <div class="stat-card total"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg> Aylık Toplam Şarj</div><div class="stat-value"><span id="animTotKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div><div class="stat-sub">${md.length} seans</div></div>
+      <div class="stat-card ac-card"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg> Aylık AC Şarj</div><div class="stat-value"><span id="animAcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div><div class="stat-sub">${ac.length} seans · ₺${ac.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div></div>
+      <div class="stat-card dc-card"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg> Aylık DC Şarj</div><div class="stat-value"><span id="animDcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div><div class="stat-sub">${dc.length} seans · ₺${dc.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div></div>
+      <div class="stat-card cost-card"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg> Aylık Toplam Maliyet</div><div class="stat-value"><span id="animTotCost" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>₺</span></div><div class="stat-sub">${totalKwh > 0 ? '~₺'+(totalCost/totalKwh).toFixed(2)+'/kWh ort.' : '—'}</div></div>`;
+    setTimeout(() => { animateValue('animTotKwh', 0, totalKwh, 400); animateValue('animAcKwh', 0, acKwh, 400); animateValue('animDcKwh', 0, dcKwh, 400); animateValue('animTotCost', 0, totalCost, 400); }, 50);
   }
-
   window.renderTable = function() {
     let md = monthData();
     if (filter !== 'all') md = md.filter(d => d.type === filter);
@@ -280,75 +276,21 @@
     const acIcon = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>`;
     const dcIcon = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg>`;
     const delIcon = `<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
-    tbody.innerHTML = md.map(d => {
-      const dt = new Date(d.date);
-      const dateStr = dt.toLocaleDateString('tr-TR', {day:'2-digit',month:'short',year:'numeric'});
-      const total = (d.kwh * d.price).toFixed(2);
-      const badgeIcon = d.type === 'AC' ? acIcon : dcIcon;
-      return `<tr>
-        <td>${dateStr}</td>
-        <td><span class="badge badge-${d.type.toLowerCase()}">${badgeIcon} ${d.type}</span></td>
-        <td style="color:var(--text); font-weight:800; font-size:15px">${d.kwh.toFixed(2)}</td>
-        <td>₺${d.price.toFixed(2)}</td>
-        <td style="color:var(--green);font-weight:800; font-size:15px">₺${total}</td>
-        <td style="color:var(--muted);font-size:12px;font-family:'Outfit',sans-serif;font-weight:600;text-transform:uppercase">${d.note || '—'}</td>
-        <td><button class="del-btn" onclick="deleteCharge(${d.id})">${delIcon}</button></td>
-      </tr>`;
-    }).join('');
+    tbody.innerHTML = md.map(d => `<tr><td>${new Date(d.date).toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})}</td><td><span class="badge badge-${d.type.toLowerCase()}">${d.type==='AC'?acIcon:dcIcon} ${d.type}</span></td><td style="color:var(--text);font-weight:800;font-size:15px">${d.kwh.toFixed(2)}</td><td>₺${d.price.toFixed(2)}</td><td style="color:var(--green);font-weight:800;font-size:15px">₺${(d.kwh*d.price).toFixed(2)}</td><td style="color:var(--muted);font-size:12px;font-family:'Outfit',sans-serif;font-weight:600;text-transform:uppercase">${d.note||'—'}</td><td><button class="del-btn" onclick="deleteCharge(${d.id})">${delIcon}</button></td></tr>`).join('');
   }
-
   window.renderBars = function() {
     const months = Array.from({length:12},(_,i)=>i);
-    const grouped = months.map(m => {
-      const md = data.filter(d => {
-        const dt = new Date(d.date);
-        return dt.getFullYear() === viewYear && dt.getMonth() === m;
-      });
-      return {
-        ac: md.filter(d=>d.type==='AC').reduce((s,d)=>s+d.kwh,0),
-        dc: md.filter(d=>d.type==='DC').reduce((s,d)=>s+d.kwh,0),
-      };
-    });
+    const grouped = months.map(m => { const md = data.filter(d => { const dt = new Date(d.date); return dt.getFullYear() === viewYear && dt.getMonth() === m; }); return { ac: md.filter(d=>d.type==='AC').reduce((s,d)=>s+d.kwh,0), dc: md.filter(d=>d.type==='DC').reduce((s,d)=>s+d.kwh,0) }; });
     const maxVal = Math.max(...grouped.map(g=>g.ac+g.dc), 1);
-    document.getElementById('barsEl').innerHTML = grouped.map((g,i) => {
-      const acH = Math.max((g.ac/maxVal)*100, g.ac>0?4:0);
-      const dcH = Math.max((g.dc/maxVal)*100, g.dc>0?4:0);
-      const isActive = i === viewMonth;
-      return `<div class="bar-group">
-        <div class="bar-wrap">
-          <div class="bar bar-ac" style="height:0px;opacity:${isActive?1:.4}" data-h="${acH}"></div>
-          <div class="bar bar-dc" style="height:0px;opacity:${isActive?1:.4}" data-h="${dcH}"></div>
-        </div>
-        <div class="bar-label" style="color: ${isActive ? 'var(--text)' : 'var(--muted)'}; font-weight: ${isActive ? '800' : '600'};">${MONTHS_TR[i].slice(0,3)}</div>
-      </div>`;
-    }).join('');
-    setTimeout(() => {
-      document.querySelectorAll('.bar-ac').forEach(b => b.style.height = b.getAttribute('data-h') + '%');
-      document.querySelectorAll('.bar-dc').forEach(b => b.style.height = b.getAttribute('data-h') + '%');
-    }, 50);
+    document.getElementById('barsEl').innerHTML = grouped.map((g,i) => { const acH = Math.max((g.ac/maxVal)*100, g.ac>0?4:0); const dcH = Math.max((g.dc/maxVal)*100, g.dc>0?4:0); const isActive = i === viewMonth; return `<div class="bar-group"><div class="bar-wrap"><div class="bar bar-ac" style="height:0px;opacity:${isActive?1:.4}" data-h="${acH}"></div><div class="bar bar-dc" style="height:0px;opacity:${isActive?1:.4}" data-h="${dcH}"></div></div><div class="bar-label" style="color:${isActive?'var(--text)':'var(--muted)'};font-weight:${isActive?'800':'600'};">${MONTHS_TR[i].slice(0,3)}</div></div>`; }).join('');
+    setTimeout(() => { document.querySelectorAll('.bar-ac').forEach(b => b.style.height = b.getAttribute('data-h') + '%'); document.querySelectorAll('.bar-dc').forEach(b => b.style.height = b.getAttribute('data-h') + '%'); }, 50);
   }
-
-  window.showToast = function() {
-    const t = document.getElementById('toast');
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2000);
-  }
-
+  window.showToast = function() { const t = document.getElementById('toast'); t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
   window.animateValue = function(id, start, end, duration) {
-    const obj = document.getElementById(id);
-    if(!obj) return;
-    let startTimestamp = null;
-    const step = (timestamp) => {
-      if (!startTimestamp) startTimestamp = timestamp;
-      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-      const current = progress * (end - start) + start;
-      obj.innerHTML = current.toFixed(2);
-      if (progress < 1) { window.requestAnimationFrame(step); }
-      else { obj.innerHTML = end.toFixed(2); }
-    };
+    const obj = document.getElementById(id); if(!obj) return; let startTimestamp = null;
+    const step = (timestamp) => { if (!startTimestamp) startTimestamp = timestamp; const progress = Math.min((timestamp - startTimestamp) / duration, 1); const current = progress * (end - start) + start; obj.innerHTML = current.toFixed(2); if (progress < 1) window.requestAnimationFrame(step); else obj.innerHTML = end.toFixed(2); };
     window.requestAnimationFrame(step);
   }
-
   const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 </script>
 
@@ -357,13 +299,10 @@
   * { box-sizing:border-box; margin:0; padding:0; }
   body { background:var(--bg); color:var(--text); font-family:'Outfit',sans-serif; min-height:100vh; overflow-x:hidden; }
   body::before { content:''; position:fixed; top:0; left:0; width:100%; height:100%; z-index:-1; background-image: radial-gradient(circle at 15% 0%, rgba(0,229,255,0.08) 0%, transparent 40%), radial-gradient(circle at 85% 20%, rgba(59,130,246,0.08) 0%, transparent 40%), radial-gradient(circle at 50% 100%, rgba(0,255,136,0.05) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(167,139,250,0.06) 0%, transparent 40%); }
-  
-  /* 🔐 Login Screen */
   #loginScreen { position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:24px; }
   .login-box { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:32px; width:90%; max-width:400px; text-align:center; }
   .login-box input { width:100%; padding:14px; margin:16px 0; background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:10px; font-size:16px; font-family:'JetBrains Mono',monospace; }
   .login-box button { background:linear-gradient(90deg,var(--ac),var(--accent)); border:none; color:#000; border-radius:10px; padding:12px 28px; font-weight:800; cursor:pointer; font-family:'Outfit',sans-serif; text-transform:uppercase; }
-  
   header { display:flex; align-items:center; justify-content:space-between; padding:20px 30px; border-bottom:1px solid var(--border); background:#030712; position:sticky; top:0; z-index:100; }
   .header-left { display:flex; align-items:center; gap:16px; }
   .logo-icon { width:46px; height:46px; border-radius:12px; background:linear-gradient(135deg,var(--ac),var(--accent)); display:flex; align-items:center; justify-content:center; box-shadow:0 0 15px rgba(0,229,255,0.2); }
@@ -445,7 +384,6 @@
 </head>
 <body>
 
-<!-- 🔐 Login Screen -->
 <div id="loginScreen">
   <div class="login-box">
     <h2 style="margin-bottom:8px">🔒 Giriş</h2>
@@ -455,56 +393,17 @@
   </div>
 </div>
 
-<!-- 📱 Ana İçerik -->
 <div id="appContent" style="display:none">
 <header>
-  <div class="header-left">
-    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-    <div class="logo-text"><h1>BYD Atto 3</h1><p>Şarj & Enerji Takibi</p></div>
-  </div>
-  <div class="header-right">
-    <button class="btn-export" onclick="exportCSV()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>CSV Yedekle</button>
-    <div class="month-nav"><button onclick="prevMonth()">‹</button><span id="monthLabel"></span><button onclick="nextMonth()">›</button></div>
-  </div>
+  <div class="header-left"><div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div class="logo-text"><h1>BYD Atto 3</h1><p>Şarj & Enerji Takibi</p></div></div>
+  <div class="header-right"><button class="btn-export" onclick="exportCSV()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>CSV Yedekle</button><div class="month-nav"><button onclick="prevMonth()">‹</button><span id="monthLabel"></span><button onclick="nextMonth()">›</button></div></div>
 </header>
 <main>
   <div class="stats" id="stats"></div>
-  <div class="section-box">
-    <h2><span style="font-size:18px; margin-right:8px;">🚙</span> Araç Durumu & Yıllık Özet (<span id="yearTitle"></span>)</h2>
-    <div class="form-row-km">
-      <div class="field"><label>Güncel Kilometre</label><input type="number" id="fCurrentKm" placeholder="1557" min="0"></div>
-      <div class="field"><label>Km Başına Maliyet</label><div class="stat-value" style="color:var(--green)"><span id="valTlKm" class="anim-val" style="color:inherit; font-size:inherit; margin:0">0.00</span><span>₺/km</span></div></div>
-      <div class="field"><label>Yıllık Toplam Şarj</label><div class="stat-value" style="color:#fff"><span id="valYearKwh" class="anim-val" style="color:inherit; font-size:inherit; margin:0">0.00</span><span style="color:var(--muted)">kWh</span></div></div>
-      <div class="field"><label>Yıllık Toplam Maliyet</label><div class="stat-value" style="color:#fff"><span id="valYearCost" class="anim-val" style="color:inherit; font-size:inherit; margin:0">0.00</span><span style="color:var(--muted)">₺</span></div></div>
-      <button class="btn-add" onclick="saveKm()">KM GÜNCELLE</button>
-    </div>
-  </div>
-  <div class="section-box">
-    <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm8 14H9v-6h2v6zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg> Aylık Şarj Dağılımı (kWh)</h2>
-    <div class="bars" id="barsEl"></div>
-    <div class="bar-legend"><div class="legend-item" style="color: var(--ac)"><div class="legend-dot" style="background:var(--ac)"></div> AC (Yavaş)</div><div class="legend-item" style="color: var(--dc)"><div class="legend-dot" style="background:var(--dc)"></div> DC (Hızlı)</div></div>
-  </div>
-  <div class="section-box">
-    <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Yeni Şarj Ekle</h2>
-    <div class="form-row">
-      <div class="field"><label>Tarih</label><input type="date" id="fDate"></div>
-      <div class="field"><label>Şarj Tipi</label><select id="fType"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select></div>
-      <div class="field"><label>Enerji (kWh)</label><input type="number" id="fKwh" placeholder="0.00" step="0.01" min="0"></div>
-      <div class="field"><label>Birim Fiyat (₺/kWh)</label><input type="number" id="fPrice" placeholder="0.00" step="0.01" min="0"></div>
-      <div class="field"><label>Not (Opsiyonel)</label><input type="text" id="fNote" placeholder="Ev, ZES, Eşarj..."></div>
-      <button class="btn-add" onclick="addCharge()">KAYDET</button>
-    </div>
-  </div>
-  <div class="section-box table-section">
-    <div class="table-header"><h2 id="tableTitle" style="margin:0">Şarj Kayıtları</h2><div class="filter-tabs"><button class="tab active-all" onclick="setFilter('all',this)">Tümü</button><button class="tab" onclick="setFilter('AC',this)">AC</button><button class="tab" onclick="setFilter('DC',this)">DC</button></div></div>
-    <div class="table-wrapper">
-      <table>
-        <thead><tr><th>Tarih</th><th>Tip</th><th>Enerji (kWh)</th><th>Birim Fiyat</th><th>Toplam Tutar</th><th>Not</th><th>İşlem</th></tr></thead>
-        <tbody id="tableBody"></tbody>
-      </table>
-    </div>
-    <div id="emptyMsg" class="empty" style="display:none">Bu ay için kayıt bulunamadı.</div>
-  </div>
+  <div class="section-box"><h2><span style="font-size:18px; margin-right:8px;">🚙</span> Araç Durumu & Yıllık Özet (<span id="yearTitle"></span>)</h2><div class="form-row-km"><div class="field"><label>Güncel Kilometre</label><input type="number" id="fCurrentKm" placeholder="1557" min="0"></div><div class="field"><label>Km Başına Maliyet</label><div class="stat-value" style="color:var(--green)"><span id="valTlKm" class="anim-val" style="color:inherit; font-size:inherit; margin:0">0.00</span><span>₺/km</span></div></div><div class="field"><label>Yıllık Toplam Şarj</label><div class="stat-value" style="color:#fff"><span id="valYearKwh" class="anim-val" style="color:inherit; font-size:inherit; margin:0">0.00</span><span style="color:var(--muted)">kWh</span></div></div><div class="field"><label>Yıllık Toplam Maliyet</label><div class="stat-value" style="color:#fff"><span id="valYearCost" class="anim-val" style="color:inherit; font-size:inherit; margin:0">0.00</span><span style="color:var(--muted)">₺</span></div></div><button class="btn-add" onclick="saveKm()">KM GÜNCELLE</button></div></div>
+  <div class="section-box"><h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm8 14H9v-6h2v6zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg> Aylık Şarj Dağılımı (kWh)</h2><div class="bars" id="barsEl"></div><div class="bar-legend"><div class="legend-item" style="color: var(--ac)"><div class="legend-dot" style="background:var(--ac)"></div> AC (Yavaş)</div><div class="legend-item" style="color: var(--dc)"><div class="legend-dot" style="background:var(--dc)"></div> DC (Hızlı)</div></div></div>
+  <div class="section-box"><h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Yeni Şarj Ekle</h2><div class="form-row"><div class="field"><label>Tarih</label><input type="date" id="fDate"></div><div class="field"><label>Şarj Tipi</label><select id="fType"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select></div><div class="field"><label>Enerji (kWh)</label><input type="number" id="fKwh" placeholder="0.00" step="0.01" min="0"></div><div class="field"><label>Birim Fiyat (₺/kWh)</label><input type="number" id="fPrice" placeholder="0.00" step="0.01" min="0"></div><div class="field"><label>Not (Opsiyonel)</label><input type="text" id="fNote" placeholder="Ev, ZES, Eşarj..."></div><button class="btn-add" onclick="addCharge()">KAYDET</button></div></div>
+  <div class="section-box table-section"><div class="table-header"><h2 id="tableTitle" style="margin:0">Şarj Kayıtları</h2><div class="filter-tabs"><button class="tab active-all" onclick="setFilter('all',this)">Tümü</button><button class="tab" onclick="setFilter('AC',this)">AC</button><button class="tab" onclick="setFilter('DC',this)">DC</button></div></div><div class="table-wrapper"><table><thead><tr><th>Tarih</th><th>Tip</th><th>Enerji (kWh)</th><th>Birim Fiyat</th><th>Toplam Tutar</th><th>Not</th><th>İşlem</th></tr></thead><tbody id="tableBody"></tbody></table></div><div id="emptyMsg" class="empty" style="display:none">Bu ay için kayıt bulunamadı.</div></div>
 </main>
 <div class="toast" id="toast"><svg width="20" height="20" viewBox="0 0 24 24" fill="#022c22"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>İşlem Başarılı</div>
 </div>
