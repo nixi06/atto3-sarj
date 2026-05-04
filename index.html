@@ -10,7 +10,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDFJcSee_FgEd60iQSf5wGCjU9GxrGG41M",
@@ -32,7 +32,6 @@
   let viewYear = new Date().getFullYear();
   let viewMonth = new Date().getMonth();
   let syncEnabled = false;
-  let migrationDone = localStorage.getItem('atto3_migration_done') === 'true';
 
   const APP_PASSWORD = "Beko1905+";
   
@@ -53,55 +52,7 @@
     if (input === APP_PASSWORD) {
       localStorage.setItem('atto3_auth', APP_PASSWORD);
       checkPassword();
-    } else {
-      alert('❌ Yanlış şifre');
-    }
-  }
-
-  // 🔁 MIGRATION: localStorage → Firebase
-  async function migrateLocalData() {
-    if (migrationDone) return;
-    
-    const localData = JSON.parse(localStorage.getItem('byd_charges') || '[]');
-    if (localData.length === 0) {
-      localStorage.setItem('atto3_migration_done', 'true');
-      return;
-    }
-
-    console.log(`🔄 ${localData.length} kayıt Firebase'e aktarılıyor...`);
-    
-    // Firebase'deki mevcut kayıtları çek (duplicate önlemek için)
-    const existingSnap = await getDocs(query(chargesRef, orderBy('date', 'desc')));
-    const existingSet = new Set();
-    existingSnap.docs.forEach(d => {
-      const dt = d.data();
-      existingSet.add(`${dt.date}|${dt.kwh}|${dt.price}`);
-    });
-
-    let uploaded = 0;
-    for (const item of localData) {
-      const key = `${item.date}|${item.kwh}|${item.price}`;
-      if (!existingSet.has(key)) {
-        try {
-          await addDoc(chargesRef, {
-            date: item.date,
-            type: item.type,
-            kwh: item.kwh,
-            price: item.price,
-            note: item.note || '',
-            id: item.id,
-            createdAt: serverTimestamp()
-          });
-          uploaded++;
-        } catch (e) {
-          console.error("Upload error:", e);
-        }
-      }
-    }
-    
-    console.log(`✅ ${uploaded} yeni kayıt yüklendi.`);
-    localStorage.setItem('atto3_migration_done', 'true');
-    migrationDone = true;
+    } else { alert('❌ Yanlış şifre'); }
   }
 
   function startSync() {
@@ -122,22 +73,78 @@
   async function syncAddCharge(charge) {
     if (!syncEnabled) return;
     try {
-      await addDoc(chargesRef, {
-        ...charge,
-        createdAt: serverTimestamp()
-      });
-    } catch (e) {
-      console.error("Ekleme hatası:", e);
-    }
+      await addDoc(chargesRef, { ...charge, createdAt: serverTimestamp() });
+    } catch (e) { console.error("Ekleme hatası:", e); }
   }
 
   async function syncDeleteCharge(firebaseId) {
     if (!syncEnabled) return;
-    try {
-      await deleteDoc(doc(db, "charges", firebaseId));
-    } catch (e) {
-      console.error("Silme hatası:", e);
-    }
+    try { await deleteDoc(doc(db, "charges", firebaseId)); }
+    catch (e) { console.error("Silme hatası:", e); }
+  }
+
+  // 📥 CSV İÇE AKTARMA FONKSİYONU
+  window.importCSV = async function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,text/csv';
+    
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      if (lines.length < 2) { alert("CSV dosyası boş veya hatalı."); return; }
+      
+      // Header'ı atla, verileri parse et
+      const imported = [];
+      const existingKeys = new Set(data.map(d => `${d.date}|${d.kwh}|${d.price}`));
+      
+      for (let i = 1; i < lines.length; i++) {
+        // CSV parse: virgülle ayrılmış, not alanında virgül olabilir
+        const parts = lines[i].split(',');
+        if (parts.length < 5) continue;
+        
+        const date = parts[0].trim();
+        const type = parts[1].trim().toUpperCase();
+        const kwh = parseFloat(parts[2]);
+        const price = parseFloat(parts[3]);
+        const note = parts.slice(5).join(',').trim() || parts[4]?.trim() || '';
+        
+        if (!date || isNaN(kwh) || isNaN(price)) continue;
+        
+        const key = `${date}|${kwh}|${price}`;
+        if (!existingKeys.has(key)) {
+          imported.push({
+            id: Date.now() + i,
+            date, type, kwh, price, note
+          });
+          existingKeys.add(key);
+        }
+      }
+      
+      if (imported.length === 0) {
+        alert("Yeni kayıt bulunamadı veya format hatalı.");
+        return;
+      }
+      
+      // Local'e ekle
+      data = [...data, ...imported].sort((a,b) => new Date(b.date) - new Date(a.date));
+      localStorage.setItem('byd_charges', JSON.stringify(data));
+      renderAll();
+      
+      // Firebase'e gönder
+      for (const item of imported) {
+        await syncAddCharge(item);
+      }
+      
+      showToast();
+      alert(`✅ ${imported.length} kayıt başarıyla içe aktarıldı!`);
+    };
+    
+    input.click();
   }
 
   window.login = login;
@@ -145,14 +152,11 @@
   window.syncAddCharge = syncAddCharge;
   window.syncDeleteCharge = syncDeleteCharge;
 
-  async function initApp() {
+  function initApp() {
     document.getElementById('fDate').valueAsDate = new Date();
     if(currentKm > 0) document.getElementById('fCurrentKm').value = currentKm;
-
-    // Önce migration çalıştır (eski verileri yükle)
-    await migrateLocalData();
-    
-    // Sonra senkronizasyonu başlat
+    const localData = JSON.parse(localStorage.getItem('byd_charges') || '[]');
+    if (localData.length > 0) { data = localData; renderAll(); }
     startSync();
   }
 
@@ -176,18 +180,15 @@
     const kwh = parseFloat(document.getElementById('fKwh').value);
     const price = parseFloat(document.getElementById('fPrice').value);
     const note = document.getElementById('fNote').value.trim();
-    
     if (!date || isNaN(kwh) || kwh <= 0 || isNaN(price) || price < 0) {
       alert('Lütfen tarih, enerji ve birim fiyat alanlarını doğru doldurun.');
       return;
     }
-    
     const newCharge = { id: Date.now(), date, type, kwh, price, note };
     data.push(newCharge);
     localStorage.setItem('byd_charges', JSON.stringify(data));
     renderAll();
     await syncAddCharge(newCharge);
-    
     document.getElementById('fKwh').value = '';
     document.getElementById('fNote').value = '';
     showToast();
@@ -310,8 +311,9 @@
   .logo-text h1 { font-size:20px; font-weight:800; letter-spacing:-0.5px; }
   .logo-text p { font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace; font-weight:700; margin-top:2px; text-transform:uppercase; letter-spacing:1.5px; }
   .header-right { display:flex; align-items:center; gap:20px; }
-  .btn-export { background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:10px 16px; border-radius:10px; font-size:13px; font-family:'Outfit',sans-serif; font-weight:600; cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:8px; }
+  .btn-export, .btn-import { background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:10px 16px; border-radius:10px; font-size:13px; font-family:'Outfit',sans-serif; font-weight:600; cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:8px; }
   .btn-export:hover { border-color:var(--green); color:var(--green); }
+  .btn-import:hover { border-color:var(--ac); color:var(--ac); }
   .month-nav { display:flex; align-items:center; gap:12px; }
   .month-nav button { background:var(--panel); border:1px solid var(--border); color:var(--text); width:36px; height:36px; border-radius:10px; cursor:pointer; font-size:20px; transition:all .2s; display:flex; align-items:center; justify-content:center; }
   .month-nav button:hover { background:var(--panel-hover); border-color:var(--ac); color:var(--ac); }
@@ -396,7 +398,11 @@
 <div id="appContent" style="display:none">
 <header>
   <div class="header-left"><div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div class="logo-text"><h1>BYD Atto 3</h1><p>Şarj & Enerji Takibi</p></div></div>
-  <div class="header-right"><button class="btn-export" onclick="exportCSV()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>CSV Yedekle</button><div class="month-nav"><button onclick="prevMonth()">‹</button><span id="monthLabel"></span><button onclick="nextMonth()">›</button></div></div>
+  <div class="header-right">
+    <button class="btn-export" onclick="exportCSV()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>CSV Yedekle</button>
+    <button class="btn-import" onclick="importCSV()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2v2h14v-2H5z"/></svg>CSV Yükle</button>
+    <div class="month-nav"><button onclick="prevMonth()">‹</button><span id="monthLabel"></span><button onclick="nextMonth()">›</button></div>
+  </div>
 </header>
 <main>
   <div class="stats" id="stats"></div>
