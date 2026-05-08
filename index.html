@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EV Şarj Takip — Türkiye</title>
+<title>BYD Atto 3 — Şarj Takip (Pro)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -32,24 +32,27 @@
   let activeCar = null;
   let myCars = [];
   let data = [];
+  let currentKm = 0;
+  let filter = 'all';
   let viewYear = new Date().getFullYear();
   let viewMonth = new Date().getMonth();
-  let filter = 'all';
 
   const trCars = {
-    "BYD": ["Atto 3", "Dolphin", "Seal", "Han", "Seal U (EV)", "Seal U (DM-i)"],
+    "BYD": ["Atto 3", "Seal", "Han", "Dolphin", "Seal U"],
     "Togg": ["T10X V1 RWD", "T10X V2 RWD", "T10X AWD"],
-    "Tesla": ["Model Y Long Range", "Model Y Performance", "Model Y RWD", "Model 3"],
-    "MG": ["MG4 Electric", "ZS EV", "Marvel R"],
-    "Renault": ["Megane E-Tech", "Zoe", "Scenic E-Tech"],
-    "Hyundai": ["IONIQ 5", "IONIQ 6", "Kona EV"],
-    "BMW": ["i4", "iX3", "iX", "i5", "i7"],
-    "Mercedes-Benz": ["EQA", "EQB", "EQE", "EQS"]
+    "Tesla": ["Model Y RWD", "Model Y Long Range", "Model Y Performance", "Model 3"],
+    "MG": ["MG4", "ZS EV", "Marvel R"],
+    "Renault": ["Megane E-Tech", "Zoe"],
+    "Hyundai": ["IONIQ 5", "IONIQ 6", "Kona EV"]
   };
 
+  // --- AUTH KONTROLÜ ---
   onAuthStateChanged(auth, async (user) => {
     if (user) {
-      if (!user.emailVerified) { showAuthScreen('verify'); return; }
+      if (!user.emailVerified) {
+        showAuthScreen('verify');
+        return;
+      }
       currentUser = user;
       await loadUserData();
       document.getElementById('authOverlay').style.display = 'none';
@@ -63,8 +66,12 @@
   async function loadUserData() {
     const userDoc = await getDoc(doc(db, "users", currentUser.uid));
     const userData = userDoc.data();
-    document.getElementById('userDisplayName').textContent = userData?.name || "Sürücü";
-    
+    document.getElementById('profileName').innerText = userData?.name || "Kullanıcı";
+    document.getElementById('accName').innerText = userData?.name;
+    document.getElementById('accEmail').innerText = userData?.email;
+    document.getElementById('accCity').innerText = userData?.city;
+    document.getElementById('accDob').innerText = userData?.dob;
+
     const carsSnap = await getDocs(collection(db, "users", currentUser.uid, "cars"));
     myCars = carsSnap.docs.map(d => ({id: d.id, ...d.data()}));
     
@@ -78,11 +85,7 @@
       if (mode === 'login') {
         const email = document.getElementById('authEmail').value;
         const pass = document.getElementById('authPass').value;
-        const res = await signInWithEmailAndPassword(auth, email, pass);
-        if (!res.user.emailVerified) {
-          alert("Lütfen önce mailinizi onaylayın!");
-          await signOut(auth);
-        }
+        await signInWithEmailAndPassword(auth, email, pass);
       } else if (mode === 'register') {
         const email = document.getElementById('regEmail').value;
         const pass = document.getElementById('regPass').value;
@@ -90,29 +93,24 @@
         const brand = document.getElementById('regBrand').value;
         const model = document.getElementById('regModel').value;
 
-        if(!email || !pass || !brand || !model) { alert("Lütfen tüm alanları doldurun!"); return; }
+        if(!email || !pass || !brand) return alert("Lütfen tüm alanları doldurun!");
 
         const res = await createUserWithEmailAndPassword(auth, email, pass);
         await sendEmailVerification(res.user);
-        
         await setDoc(doc(db, "users", res.user.uid), {
-          name, email,
+          name, email, city: document.getElementById('regCity').value,
           dob: document.getElementById('regDob').value,
-          city: document.getElementById('regCity').value,
           gender: document.getElementById('regGender').value
         });
-
-        await addDoc(collection(db, "users", res.user.uid, "cars"), {
-          brand, model, km: 0
-        });
-
-        alert("Kayıt başarılı! Mailinizi onayladıktan sonra giriş yapabilirsiniz.");
+        await addDoc(collection(db, "users", res.user.uid, "cars"), { brand, model, km: 0 });
+        alert("Kayıt başarılı! Mail onayından sonra giriş yapabilirsiniz.");
         showAuthScreen('login');
       }
     } catch (e) { alert("Hata: " + e.message); }
   };
 
-  window.loadTrModels = (brand, targetId) => {
+  // --- ARABA MODELLERİNİ YÜKLE ---
+  window.loadModels = (brand, targetId) => {
     const select = document.getElementById(targetId);
     select.innerHTML = '<option value="">Model Seçin</option>';
     if(trCars[brand]) {
@@ -120,35 +118,12 @@
     }
   };
 
-  window.switchCar = (carId) => {
-    activeCar = myCars.find(c => c.id === carId);
-    closeModal();
-    initApp();
-  };
-
-  window.addNewCar = async () => {
-    const brand = document.getElementById('newCarBrand').value;
-    const model = document.getElementById('newCarModel').value;
-    if(!brand || !model) return alert("Araç seçin!");
-    await addDoc(collection(db, "users", currentUser.uid, "cars"), { brand, model, km: 0 });
-    alert("Yeni araç eklendi.");
-    closeModal();
-    loadUserData();
-  };
-
-  window.removeCar = async (carId) => {
-    if(myCars.length <= 1) return alert("En az bir aracınız olmalı.");
-    if(confirm("Bu aracı silmek istiyor musunuz?")) {
-      await deleteDoc(doc(db, "users", currentUser.uid, "cars", carId));
-      if(activeCar.id === carId) activeCar = null;
-      loadUserData();
-    }
-  };
-
+  // --- ANA UYGULAMA MANTIĞI (ORİJİNAL) ---
   function initApp() {
-    if(!activeCar) return;
-    document.getElementById('activeCarName').textContent = `${activeCar.brand} ${activeCar.model}`;
-    document.getElementById('fCurrentKm').value = activeCar.km || 0;
+    document.getElementById('activeCarTitle').innerText = `${activeCar.brand} ${activeCar.model}`;
+    currentKm = activeCar.km || 0;
+    document.getElementById('fCurrentKm').value = currentKm;
+    document.getElementById('fDate').valueAsDate = new Date();
     startSync();
   }
 
@@ -171,14 +146,11 @@
     const kwh = parseFloat(document.getElementById('fKwh').value);
     const price = parseFloat(document.getElementById('fPrice').value);
     const note = document.getElementById('fNote').value;
-
-    if (!date || isNaN(kwh) || isNaN(price)) return alert("Eksik bilgi!");
-
+    if (!date || isNaN(kwh) || isNaN(price)) return alert("Bilgileri kontrol edin.");
+    
     await addDoc(collection(db, "charges"), {
-      userId: currentUser.uid,
-      carId: activeCar.id,
-      date, type, kwh, price, note,
-      createdAt: serverTimestamp()
+      userId: currentUser.uid, carId: activeCar.id,
+      date, type, kwh, price, note, createdAt: serverTimestamp()
     });
     document.getElementById('fKwh').value = '';
     showToast();
@@ -193,60 +165,31 @@
   };
 
   window.deleteCharge = async (id) => {
-    if(confirm("Kaydı silmek istiyor musunuz?")) await deleteDoc(doc(db, "charges", id));
+    if(confirm("Silmek istiyor musunuz?")) await deleteDoc(doc(db, "charges", id));
   };
 
-  window.logout = () => signOut(auth);
-
-  window.forgotPassword = () => {
-    const email = document.getElementById('authEmail').value;
-    if(!email) return alert("E-posta adresinizi girin.");
-    sendPasswordResetEmail(auth, email).then(() => alert("Şifre sıfırlama linki gönderildi."));
+  window.switchCar = (id) => {
+    activeCar = myCars.find(c => c.id === id);
+    loadUserData();
+    closeAccountPage();
   };
 
-  window.deleteMyAccount = async () => {
-    if(confirm("Tüm verileriniz kalıcı olarak silinecek. Emin misiniz?")) {
-      try { await deleteUser(auth.currentUser); location.reload(); }
-      catch (e) { alert("Güvenlik nedeniyle tekrar giriş yapmalısınız."); }
+  window.addNewCar = async () => {
+    const brand = document.getElementById('newCarBrand').value;
+    const model = document.getElementById('newCarModel').value;
+    if(!brand || !model) return alert("Araç bilgilerini seçin.");
+    await addDoc(collection(db, "users", currentUser.uid, "cars"), { brand, model, km: 0 });
+    alert("Yeni araç eklendi.");
+    loadUserData();
+  };
+
+  window.deleteAccount = async () => {
+    if(confirm("HESABINIZI VE TÜM VERİLERİNİZİ SİLMEK İSTEDİĞİNİZDEN EMİN MİSİNİZ?")) {
+      await deleteUser(auth.currentUser).then(() => location.reload()).catch(() => alert("Güvenlik için tekrar giriş yapıp deneyin."));
     }
   };
 
-  // --- UI YARDIMCILARI ---
-  function showAuthScreen(view) {
-    document.getElementById('authOverlay').style.display = 'flex';
-    document.getElementById('loginBox').style.display = view === 'login' ? 'block' : 'none';
-    document.getElementById('registerBox').style.display = view === 'register' ? 'block' : 'none';
-    document.getElementById('verifyBox').style.display = view === 'verify' ? 'block' : 'none';
-    
-    if(view === 'register') {
-      const bSelect = document.getElementById('regBrand');
-      bSelect.innerHTML = '<option value="">Marka Seçin</option>';
-      Object.keys(trCars).forEach(b => { bSelect.innerHTML += `<option value="${b}">${b}</option>`; });
-    }
-  }
-
-  window.toggleAuth = (v) => showAuthScreen(v);
-  window.openModal = (id) => {
-    document.getElementById(id).style.display = 'flex';
-    if(id === 'modalNewCar') {
-      const bSelect = document.getElementById('newCarBrand');
-      bSelect.innerHTML = '<option value="">Marka Seçin</option>';
-      Object.keys(trCars).forEach(b => { bSelect.innerHTML += `<option value="${b}">${b}</option>`; });
-    }
-  };
-  window.closeModal = () => document.querySelectorAll('.modal-overlay').forEach(m => m.style.display='none');
-
-  function renderCarList() {
-    const list = document.getElementById('myCarsList');
-    list.innerHTML = myCars.map(c => `
-      <div class="car-item ${activeCar?.id === c.id ? 'active' : ''}" onclick="switchCar('${c.id}')">
-        <div><b>${c.brand}</b><br><small>${c.model}</small></div>
-        <button class="del-btn" onclick="event.stopPropagation(); removeCar('${c.id}')"><i class="fa-solid fa-trash"></i></button>
-      </div>
-    `).join('');
-  }
-
-  // --- RENDER FONKSİYONLARI (ESKİ KODUN AYISI) ---
+  // --- RENDER & GÖRSEL (ORİJİNAL KODUNDAKİLER) ---
   const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   window.renderAll = () => {
     document.getElementById('monthLabel').textContent = MONTHS_TR[viewMonth] + ' ' + viewYear;
@@ -259,7 +202,7 @@
     const yearKwh = yearData.reduce((s,d) => s + d.kwh, 0);
     const yearCost = yearData.reduce((s,d) => s + (d.kwh * d.price), 0);
     const allTimeCost = data.reduce((s,d) => s + (d.kwh * d.price), 0);
-    const tlKm = (activeCar?.km > 0) ? (allTimeCost / activeCar.km) : 0;
+    const tlKm = currentKm > 0 ? (allTimeCost / currentKm) : 0;
     animateValue('valTlKm', 0, tlKm, 400);
     animateValue('valYearKwh', 0, yearKwh, 400);
     animateValue('valYearCost', 0, yearCost, 400);
@@ -272,9 +215,9 @@
     const totalKwh = md.reduce((s,d) => s+d.kwh, 0);
     const totalCost = md.reduce((s,d) => s+d.kwh*d.price, 0);
     document.getElementById('stats').innerHTML = `
-      <div class="stat-card total"><div class="stat-label">Aylık Toplam</div><div class="stat-value">${totalKwh.toFixed(2)}<span>kWh</span></div></div>
-      <div class="stat-card ac-card"><div class="stat-label">AC Şarj</div><div class="stat-value">${ac.reduce((s,d)=>s+d.kwh,0).toFixed(2)}<span>kWh</span></div></div>
-      <div class="stat-card dc-card"><div class="stat-label">DC Şarj</div><div class="stat-value">${dc.reduce((s,d)=>s+d.kwh,0).toFixed(2)}<span>kWh</span></div></div>
+      <div class="stat-card total"><div class="stat-label">Aylık Toplam Şarj</div><div class="stat-value">${totalKwh.toFixed(2)}<span>kWh</span></div></div>
+      <div class="stat-card ac-card"><div class="stat-label">Aylık AC Şarj</div><div class="stat-value">${ac.reduce((s,d)=>s+d.kwh,0).toFixed(2)}<span>kWh</span></div></div>
+      <div class="stat-card dc-card"><div class="stat-label">Aylık DC Şarj</div><div class="stat-value">${dc.reduce((s,d)=>s+d.kwh,0).toFixed(2)}<span>kWh</span></div></div>
       <div class="stat-card cost-card"><div class="stat-label">Aylık Maliyet</div><div class="stat-value">${totalCost.toFixed(2)}<span>₺</span></div></div>`;
   };
 
@@ -301,6 +244,7 @@
       </div>`).join('');
   };
 
+  // --- FONKSİYONLAR ---
   window.animateValue = (id, start, end, duration) => {
     const obj = document.getElementById(id); if(!obj) return;
     let startTimestamp = null;
@@ -314,96 +258,108 @@
   };
 
   window.exportCSV = () => {
-    if(!data.length) return alert("Veri yok!");
-    let csv = "data:text/csv;charset=utf-8,\uFEFFTarih,Tip,Enerji(kWh),BirimFiyat(TL),Toplam(TL),Not\n";
+    let csv = "data:text/csv;charset=utf-8,\uFEFFTarih,Tip,Enerji,Fiyat,Toplam,Not\n";
     data.forEach(d => csv += `${d.date},${d.type},${d.kwh},${d.price},${d.kwh*d.price},${d.note||''}\n`);
-    const link = document.createElement("a"); link.setAttribute("href", encodeURI(csv)); link.setAttribute("download", "sarj_kayitlari.csv"); link.click();
+    const link = document.createElement("a"); link.setAttribute("href", encodeURI(csv)); link.setAttribute("download", "kayitlar.csv"); link.click();
   };
 
+  window.showAuthScreen = (v) => {
+    document.getElementById('authOverlay').style.display = 'flex';
+    document.getElementById('loginBox').style.display = v === 'login' ? 'block' : 'none';
+    document.getElementById('registerBox').style.display = v === 'register' ? 'block' : 'none';
+    document.getElementById('verifyBox').style.display = v === 'verify' ? 'block' : 'none';
+    if(v === 'register') {
+      const bs = document.getElementById('regBrand');
+      bs.innerHTML = '<option value="">Marka Seçin</option>';
+      Object.keys(trCars).forEach(b => bs.innerHTML += `<option value="${b}">${b}</option>`);
+    }
+  };
+
+  window.openAccountPage = () => {
+    document.getElementById('accountPage').style.display = 'block';
+    const nb = document.getElementById('newCarBrand');
+    nb.innerHTML = '<option value="">Marka Seçin</option>';
+    Object.keys(trCars).forEach(b => nb.innerHTML += `<option value="${b}">${b}</option>`);
+  };
+  window.closeAccountPage = () => document.getElementById('accountPage').style.display = 'none';
+  window.renderCarList = () => {
+    document.getElementById('carList').innerHTML = myCars.map(c => `
+      <div class="car-card ${activeCar.id === c.id ? 'active' : ''}" onclick="switchCar('${c.id}')">
+        <b>${c.brand}</b><span>${c.model}</span>
+      </div>`).join('');
+  };
+  window.showToast = () => { const t=document.getElementById('toast'); t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); };
+  window.logout = () => signOut(auth);
   window.prevMonth = () => { viewMonth--; if(viewMonth<0){viewMonth=11; viewYear--;} renderAll(); };
   window.nextMonth = () => { viewMonth++; if(viewMonth>11){viewMonth=0; viewYear++;} renderAll(); };
   window.setFilter = (f, el) => { filter=f; document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active-all')); el.classList.add('active-all'); renderTable(); };
-  window.showToast = () => { const t=document.getElementById('toast'); t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); };
 </script>
 
 <style>
-  :root { --bg:#030712; --panel:#111827; --panel-hover:#1f2937; --border:rgba(255,255,255,0.08); --ac:#00e5ff; --dc:#ff6b35; --green:#00ff88; --text:#f8fafc; --muted:#94a3b8; --accent:#3b82f6; --radius:16px; }
+  :root { --bg:#030712; --panel:#111827; --ac:#00e5ff; --dc:#ff6b35; --green:#00ff88; --muted:#94a3b8; --border:rgba(255,255,255,0.08); }
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { background:var(--bg); color:var(--text); font-family:'Outfit',sans-serif; min-height:100vh; overflow-x:hidden; }
+  body { background:var(--bg); color:#fff; font-family:'Outfit',sans-serif; }
   
-  /* Auth Styles */
-  #authOverlay { position:fixed; inset:0; background:var(--bg); z-index:10000; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .auth-card { background:var(--panel); border:1px solid var(--border); padding:32px; border-radius:24px; width:100%; max-width:400px; box-shadow: 0 10px 50px rgba(0,0,0,0.5); }
-  .auth-card input, .auth-card select { width:100%; padding:14px; margin-bottom:12px; background:var(--bg); border:1px solid var(--border); color:#fff; border-radius:12px; font-family:'JetBrains Mono'; outline:none; }
-  .auth-card button { width:100%; padding:14px; background:var(--accent); border:none; border-radius:12px; font-weight:800; cursor:pointer; color:#000; margin-top:10px; text-transform:uppercase; }
-  .auth-card p { text-align:center; margin-top:20px; font-size:13px; color:var(--muted); cursor:pointer; }
+  /* Auth Screen */
+  #authOverlay { position:fixed; inset:0; background:var(--bg); z-index:10000; display:flex; align-items:center; justify-content:center; }
+  .auth-box { background:var(--panel); border:1px solid var(--border); padding:30px; border-radius:20px; width:100%; max-width:380px; }
+  input, select { width:100%; padding:12px; margin-bottom:12px; background:#000; border:1px solid var(--border); color:#fff; border-radius:10px; font-family:'JetBrains Mono'; }
+  button { width:100%; padding:12px; background:var(--ac); border:none; border-radius:10px; font-weight:800; cursor:pointer; color:#000; }
+  
+  /* Account Page (Separate View) */
+  #accountPage { position:fixed; inset:0; background:var(--bg); z-index:9000; display:none; padding:30px; overflow-y:auto; }
+  .acc-container { max-width:600px; margin:0 auto; }
+  .car-card { background:var(--panel); padding:15px; border-radius:12px; margin-bottom:10px; border:1px solid var(--border); cursor:pointer; display:flex; justify-content:space-between; }
+  .car-card.active { border-color:var(--ac); background:rgba(0,229,255,0.05); }
 
-  /* App Layout */
-  header { display:flex; align-items:center; justify-content:space-between; padding:15px 25px; background:rgba(3,7,18,0.8); backdrop-filter:blur(10px); position:sticky; top:0; z-index:100; border-bottom:1px solid var(--border); }
+  /* Header */
+  header { display:flex; align-items:center; justify-content:space-between; padding:15px 25px; border-bottom:1px solid var(--border); background:#030712; position:sticky; top:0; z-index:100; }
+  .profile-btn { display:flex; align-items:center; gap:10px; cursor:pointer; background:var(--panel); padding:8px 15px; border-radius:100px; border:1px solid var(--border); }
+
+  /* Stats & Main (Original CSS) */
   main { max-width:1100px; margin:0 auto; padding:25px; }
-  .section-box { background:var(--panel); padding:25px; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:25px; }
-  
-  /* Stats Grid */
-  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:25px; }
-  .stat-card { background:var(--panel); padding:25px; border-radius:var(--radius); border:1px solid var(--border); position:relative; overflow:hidden; }
-  .stat-label { font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:10px; font-weight:700; letter-spacing:1px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:18px; margin-bottom:25px; }
+  .stat-card { background:var(--panel); padding:22px; border-radius:16px; border:1px solid var(--border); }
+  .stat-label { font-size:12px; color:var(--muted); text-transform:uppercase; margin-bottom:10px; }
   .stat-value { font-family:'JetBrains Mono'; font-size:32px; font-weight:800; }
   .stat-value span { font-size:14px; margin-left:5px; color:var(--muted); }
-
-  /* Form Row */
+  
+  .section-box { background:var(--panel); padding:25px; border-radius:16px; border:1px solid var(--border); margin-bottom:25px; }
   .form-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:15px; align-items:flex-end; }
   .field label { display:block; font-size:11px; color:var(--muted); margin-bottom:8px; text-transform:uppercase; font-weight:700; }
-  .field input, .field select { width:100%; padding:12px; background:var(--bg); border:1px solid var(--border); color:#fff; border-radius:10px; font-family:'JetBrains Mono'; outline:none; }
-  .btn-add { background:var(--green); color:#000; padding:12px 25px; border-radius:10px; border:none; font-weight:800; cursor:pointer; text-transform:uppercase; }
-
-  /* Bars Chart */
-  .bars { display:flex; align-items:flex-end; gap:8px; height:150px; margin-top:20px; }
+  
+  .bars { display:flex; align-items:flex-end; gap:8px; height:140px; margin-top:15px; }
   .bar-group { flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; }
-  .bar-wrap { width:100%; height:120px; display:flex; align-items:flex-end; gap:2px; }
-  .bar { flex:1; border-radius:4px 4px 0 0; transition: height 0.5s ease; }
+  .bar-wrap { width:100%; height:110px; display:flex; align-items:flex-end; gap:2px; }
+  .bar { flex:1; border-radius:3px 3px 0 0; min-height:2px; transition:0.4s; }
   .bar-ac { background:var(--ac); } .bar-dc { background:var(--dc); }
   .bar-label { font-size:10px; color:var(--muted); font-family:'JetBrains Mono'; }
 
-  /* Table */
-  .table-wrapper { overflow-x:auto; margin-top:15px; }
-  table { width:100%; border-collapse:collapse; }
-  th { text-align:left; padding:15px; color:var(--muted); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border); }
-  td { padding:15px; border-bottom:1px solid rgba(255,255,255,0.02); font-family:'JetBrains Mono'; font-size:13px; }
+  table { width:100%; border-collapse:collapse; margin-top:15px; }
+  th { text-align:left; padding:12px; color:var(--muted); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border); }
+  td { padding:14px; border-bottom:1px solid rgba(255,255,255,0.02); font-family:'JetBrains Mono'; font-size:13px; }
   .badge { padding:4px 8px; border-radius:6px; font-size:10px; font-weight:800; }
   .badge.ac { background:rgba(0,229,255,0.1); color:var(--ac); }
   .badge.dc { background:rgba(255,107,53,0.1); color:var(--dc); }
-
-  /* Modal */
-  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; display:none; align-items:center; justify-content:center; padding:20px; }
-  .modal-content { background:var(--panel); border:1px solid var(--border); padding:30px; border-radius:24px; width:100%; max-width:450px; position:relative; }
-  .car-item { display:flex; justify-content:space-between; align-items:center; padding:15px; background:var(--bg); border-radius:12px; margin-bottom:10px; border:1px solid var(--border); cursor:pointer; }
-  .car-item.active { border-color:var(--ac); background:rgba(0,229,255,0.05); }
-
-  /* Global UI */
-  .toast { position:fixed; bottom:30px; right:30px; background:var(--green); color:#000; padding:15px 30px; border-radius:12px; font-weight:800; transform:translateY(100px); transition:0.4s; opacity:0; z-index:1000; }
-  .toast.show { transform:translateY(0); opacity:1; }
-  .tab { padding:8px 16px; background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; cursor:pointer; font-weight:600; }
-  .active-all { background:var(--accent); color:#000; border:none; }
-  .del-btn { background:none; border:none; color:var(--muted); cursor:pointer; padding:5px; transition: 0.2s; }
-  .del-btn:hover { color:#ff4444; }
-
-  @media (max-width:768px) { .stats { grid-template-columns: 1fr 1fr; } .form-row { grid-template-columns: 1fr; } }
+  .del-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; }
+  .tab { padding:8px 16px; background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; cursor:pointer; }
+  .active-all { background:var(--ac); color:#000; border:none; font-weight:800; }
+  .toast { position:fixed; bottom:25px; right:25px; background:var(--green); color:#000; padding:12px 25px; border-radius:10px; opacity:0; transition:0.3s; z-index:11000; font-weight:800; }
+  .toast.show { opacity:1; }
 </style>
 </head>
 <body>
 
 <div id="authOverlay">
-  <div class="auth-card" id="loginBox">
-    <h2 style="margin-bottom:10px">Hoş Geldiniz</h2>
-    <p style="text-align:left; margin-bottom:20px; font-size:14px">Devam etmek için giriş yapın</p>
+  <div class="auth-box" id="loginBox">
+    <h2 style="margin-bottom:20px">Giriş Yap</h2>
     <input type="email" id="authEmail" placeholder="E-posta">
     <input type="password" id="authPass" placeholder="Şifre">
-    <button onclick="handleAuth('login')">Giriş Yap</button>
-    <p onclick="forgotPassword()">Şifremi Unuttum</p>
-    <p onclick="toggleAuth('register')">Hesabınız yok mu? <b>Üye Olun</b></p>
+    <button onclick="handleAuth('login')">Giriş</button>
+    <p style="margin-top:20px; text-align:center; font-size:13px; cursor:pointer" onclick="toggleAuth('register')">Hesabın yok mu? Kaydol</p>
   </div>
-  <div class="auth-card" id="registerBox" style="display:none; max-height: 90vh; overflow-y: auto;">
-    <h2 style="margin-bottom:10px">Kayıt Ol</h2>
+  <div class="auth-box" id="registerBox" style="display:none">
+    <h2 style="margin-bottom:15px">Yeni Üyelik</h2>
     <input type="text" id="regName" placeholder="Ad Soyad">
     <input type="date" id="regDob" title="Doğum Tarihi">
     <select id="regGender"><option value="Erkek">Erkek</option><option value="Kadın">Kadın</option></select>
@@ -411,47 +367,70 @@
     <input type="email" id="regEmail" placeholder="E-posta">
     <input type="password" id="regPass" placeholder="Şifre">
     <hr style="opacity:0.1; margin:15px 0">
-    <label style="font-size:11px; color:var(--muted); display:block; margin-bottom:10px">ARACINIZ</label>
-    <select id="regBrand" onchange="loadTrModels(this.value, 'regModel')"></select>
-    <select id="regModel"><option value="">Önce Marka Seçin</option></select>
+    <select id="regBrand" onchange="loadModels(this.value, 'regModel')"></select>
+    <select id="regModel"><option value="">Model Seçin</option></select>
     <button onclick="handleAuth('register')">Kaydı Tamamla</button>
-    <p onclick="toggleAuth('login')">Zaten üye misiniz? <b>Giriş Yap</b></p>
+    <p style="margin-top:20px; text-align:center; font-size:13px; cursor:pointer" onclick="toggleAuth('login')">Geri Dön</p>
   </div>
-  <div class="auth-card" id="verifyBox" style="display:none; text-align:center;">
-    <i class="fa-solid fa-envelope-open-text" style="font-size:48px; color:var(--accent); margin-bottom:20px"></i>
+  <div class="auth-box" id="verifyBox" style="display:none; text-align:center">
     <h2>Mailinizi Onaylayın</h2>
-    <p style="margin:20px 0; line-height:1.5">Giriş yapabilmek için e-posta adresinize gönderilen doğrulama linkine tıklamanız gerekmektedir.</p>
-    <button onclick="location.reload()">Onayladım, Giriş Yap</button>
-    <p onclick="logout()">Geri Dön</p>
+    <p style="margin:20px 0; color:var(--muted)">Lütfen mail kutunuzu kontrol edin. Onayladıktan sonra sayfayı yenileyin.</p>
+    <button onclick="location.reload()">Giriş Yap</button>
+  </div>
+</div>
+
+<div id="accountPage">
+  <div class="acc-container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px">
+      <h1>Hesap Bilgileri</h1>
+      <button onclick="closeAccountPage()" style="width:auto; padding:8px 20px; background:var(--panel); border:1px solid var(--border); color:#fff">Kapat</button>
+    </div>
+    <div class="section-box">
+      <p style="margin-bottom:10px"><b>İsim:</b> <span id="accName"></span></p>
+      <p style="margin-bottom:10px"><b>E-posta:</b> <span id="accEmail"></span></p>
+      <p style="margin-bottom:10px"><b>Şehir:</b> <span id="accCity"></span></p>
+      <p style="margin-bottom:10px"><b>Doğum Tarihi:</b> <span id="accDob"></span></p>
+      <button onclick="logout()" style="margin-top:15px; background:#ff4444; color:#fff">Çıkış Yap</button>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-bottom:15px">
+      <h3>Araçlarım</h3>
+      <button onclick="openModal('newCarDiv')" style="width:auto; padding:5px 15px; font-size:12px">+ Yeni Araç</button>
+    </div>
+    <div id="carList"></div>
+    <div id="newCarDiv" style="display:none; margin-top:20px" class="section-box">
+       <select id="newCarBrand" onchange="loadModels(this.value, 'newCarModel')"></select>
+       <select id="newCarModel"></select>
+       <button onclick="addNewCar()">Ekle</button>
+    </div>
+    <button onclick="deleteAccount()" style="margin-top:50px; background:none; border:1px solid #ff4444; color:#ff4444">Hesabımı Kalıcı Olarak Sil</button>
   </div>
 </div>
 
 <div id="appContent" style="display:none">
   <header>
     <div style="display:flex; align-items:center; gap:15px">
-      <div style="width:40px; height:40px; background:var(--accent); border-radius:10px; display:flex; align-items:center; justify-content:center; color:#000">
-        <i class="fa-solid fa-car-side"></i>
+      <div style="background:var(--ac); width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#000">
+        <i class="fa-solid fa-bolt"></i>
       </div>
       <div>
-        <h1 style="font-size:16px" id="activeCarName">Yükleniyor...</h1>
-        <p style="font-size:10px; color:var(--muted)" id="userDisplayName"></p>
+        <h1 id="activeCarTitle" style="font-size:18px">BYD Atto 3</h1>
+        <p style="font-size:10px; color:var(--muted)">Şarj & Enerji Takibi</p>
       </div>
     </div>
-    <div style="display:flex; gap:10px">
-      <button class="tab" onclick="openModal('modalAccount')"><i class="fa-solid fa-user"></i> Hesabım</button>
-      <button class="tab" style="color:#ff4444" onclick="logout()"><i class="fa-solid fa-power-off"></i></button>
+    <div class="profile-btn" onclick="openAccountPage()">
+      <i class="fa-solid fa-user"></i>
+      <span id="profileName">Hesabım</span>
     </div>
   </header>
 
   <main>
     <div class="stats" id="stats"></div>
-
     <div class="section-box">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
-        <h2 style="font-size:16px">Kilometre & Yıllık Özet (<span id="yearTitle"></span>)</h2>
+      <div style="display:flex; justify-content:space-between; margin-bottom:20px">
+        <h2>Araç Durumu & Özet (<span id="yearTitle"></span>)</h2>
         <div style="display:flex; gap:10px">
           <button onclick="prevMonth()" class="tab">‹</button>
-          <span id="monthLabel" style="font-family:'JetBrains Mono'; font-size:13px; min-width:80px; text-align:center"></span>
+          <span id="monthLabel" style="font-family:'JetBrains Mono'; font-size:13px; line-height:35px"></span>
           <button onclick="nextMonth()" class="tab">›</button>
         </div>
       </div>
@@ -459,78 +438,54 @@
         <div class="field"><label>Güncel KM</label><input type="number" id="fCurrentKm"></div>
         <div class="field"><label>Maliyet/KM</label><div class="stat-value" id="valTlKm" style="color:var(--green)">0.00</div></div>
         <div class="field"><label>Yıllık kWh</label><div class="stat-value" id="valYearKwh">0.00</div></div>
-        <div class="field"><label>Yıllık Maliyet</label><div class="stat-value" id="valYearCost">0.00</div></div>
-        <button class="btn-add" onclick="saveKm()">KM GÜNCELLE</button>
+        <div class="field"><label>Yıllık ₺</label><div class="stat-value" id="valYearCost">0.00</div></div>
+        <button class="btn-add" onclick="saveKm()" style="background:var(--ac)">KM GÜNCELLE</button>
       </div>
     </div>
 
     <div class="section-box">
-      <h2 style="font-size:16px; margin-bottom:20px">Aylık Dağılım</h2>
+      <h2>Aylık Dağılım</h2>
       <div class="bars" id="barsEl"></div>
     </div>
 
     <div class="section-box">
-      <h2 style="font-size:16px; margin-bottom:20px">Yeni Şarj Kaydı</h2>
+      <h2>Yeni Şarj Ekle</h2>
       <div class="form-row">
         <div class="field"><label>Tarih</label><input type="date" id="fDate"></div>
-        <div class="field"><label>Tip</label><select id="fType"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select></div>
-        <div class="field"><label>Enerji (kWh)</label><input type="number" id="fKwh" step="0.01" placeholder="0.00"></div>
-        <div class="field"><label>Birim Fiyat (₺)</label><input type="number" id="fPrice" step="0.01" placeholder="0.00"></div>
-        <div class="field"><label>Not</label><input type="text" id="fNote" placeholder="Örn: Ev, ZES..."></div>
+        <div class="field"><label>Tip</label><select id="fType"><option value="AC">AC</option><option value="DC">DC</option></select></div>
+        <div class="field"><label>kWh</label><input type="number" id="fKwh" placeholder="0.00"></div>
+        <div class="field"><label>Fiyat (₺/kWh)</label><input type="number" id="fPrice" placeholder="0.00"></div>
+        <div class="field"><label>Not</label><input type="text" id="fNote"></div>
         <button class="btn-add" onclick="addCharge()">KAYDET</button>
       </div>
     </div>
 
-    <div class="section-box" style="padding:0">
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:25px">
-        <h2 style="font-size:16px">Şarj Kayıtları</h2>
+    <div class="section-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+        <h2>Kayıtlar</h2>
         <div style="display:flex; gap:10px">
           <button class="tab" onclick="exportCSV()"><i class="fa-solid fa-download"></i> CSV</button>
-          <div style="border-left:1px solid var(--border); margin:0 5px"></div>
           <button class="tab active-all" onclick="setFilter('all', this)">Tümü</button>
           <button class="tab" onclick="setFilter('AC', this)">AC</button>
           <button class="tab" onclick="setFilter('DC', this)">DC</button>
         </div>
       </div>
-      <div class="table-wrapper">
+      <div class="table-wrapper" style="overflow-x:auto">
         <table>
-          <thead><tr><th>Tarih</th><th>Tip</th><th>kWh</th><th>₺/kWh</th><th>Toplam</th><th>Not</th><th>İşlem</th></tr></thead>
+          <thead><tr><th>Tarih</th><th>Tip</th><th>kWh</th><th>₺/kWh</th><th>Toplam</th><th>Not</th><th></th></tr></thead>
           <tbody id="tableBody"></tbody>
         </table>
       </div>
     </div>
   </main>
-
-  <div class="modal-overlay" id="modalAccount">
-    <div class="modal-content">
-      <h3 style="margin-bottom:20px">Hesabım</h3>
-      <div id="accInfo" style="font-size:14px; color:var(--muted); margin-bottom:25px"></div>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
-        <h4 style="font-size:14px">Araçlarım</h4>
-        <button class="btn-add" style="padding:5px 12px; font-size:11px" onclick="openModal('modalNewCar')">+ YENİ EKLE</button>
-      </div>
-      <div id="myCarsList"></div>
-      <button style="margin-top:20px; width:100%; padding:12px; background:none; border:1px solid #ff4444; color:#ff4444; border-radius:12px; font-weight:700; cursor:pointer" onclick="deleteMyAccount()">HESABIMI SİL</button>
-      <button class="tab" style="width:100%; margin-top:10px" onclick="closeModal()">Kapat</button>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalNewCar">
-    <div class="modal-content">
-      <h3>Yeni Araç Ekle</h3>
-      <div style="margin:20px 0">
-        <label style="font-size:11px; color:var(--muted)">MARKA</label>
-        <select id="newCarBrand" onchange="loadTrModels(this.value, 'newCarModel')"></select>
-        <label style="font-size:11px; color:var(--muted)">MODEL</label>
-        <select id="newCarModel"></select>
-      </div>
-      <button class="btn-add" style="width:100%" onclick="addNewCar()">ARACI EKLE</button>
-      <button class="tab" style="width:100%; margin-top:10px" onclick="closeModal()">İptal</button>
-    </div>
-  </div>
-
-  <div class="toast" id="toast"><i class="fa-solid fa-check"></i> İşlem Başarılı</div>
 </div>
+
+<div class="toast" id="toast">İşlem Başarılı!</div>
+
+<script>
+  // UI Yardımcıları
+  window.openModal = (id) => document.getElementById(id).style.display = 'block';
+</script>
 
 </body>
 </html>
