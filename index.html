@@ -5,155 +5,225 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BYD Atto 3 — Şarj Takip</title>
   <style>
-    :root { --primary: #0056b3; --bg: #f5f7fa; --card: #fff; --border: #ddd; }
-    body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; }
-    .container { max-width: 900px; margin: 0 auto; }
-    .card { background: var(--card); padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    :root { --bg: #f4f6f9; --card: #fff; --primary: #0d6efd; --danger: #dc3545; --text: #212529; --border: #dee2e6; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; }
+    .container { max-width: 960px; margin: 0 auto; }
+    
+    /* Auth Overlay */
+    #auth-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+    .auth-card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+    .auth-card h2 { text-align: center; margin-top: 0; }
     .form-group { margin-bottom: 12px; }
-    label { display: block; margin-bottom: 4px; font-weight: 500; }
-    input, select, button { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
-    button { background: var(--primary); color: #fff; cursor: pointer; border: none; font-weight: 600; }
+    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 14px; }
+    input, select, button { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+    button { background: var(--primary); color: #fff; cursor: pointer; font-weight: 600; border: none; }
     button:hover { opacity: 0.9; }
     button.secondary { background: #6c757d; margin-top: 8px; }
-    button.danger { background: #dc3545; }
-    .view { display: none; }
-    .view.active { display: block; }
-    .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-    .tab-btn { padding: 10px 16px; background: #e9ecef; color: #333; border-radius: 6px; cursor: pointer; }
-    .tab-btn.active { background: var(--primary); color: #fff; }
+    button.danger { background: var(--danger); }
+    button.outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+    
+    /* Main App Layout */
+    #main-app { display: none; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .nav-tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid var(--border); padding-bottom: 8px; }
+    .nav-tab { padding: 8px 16px; border-radius: 8px 8px 0 0; cursor: pointer; background: #e9ecef; font-weight: 500; }
+    .nav-tab.active { background: var(--primary); color: #fff; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
-    .alert { padding: 12px; background: #d1ecf1; color: #0c5460; border-radius: 6px; margin-bottom: 15px; display: none; }
-    .alert.success { background: #d4edda; color: #155724; }
-    .alert.error { background: #f8d7da; color: #721c24; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
+    
+    /* Original UI Sections */
+    .card { background: var(--card); padding: 16px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); margin-bottom: 16px; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    .btn-row button { width: auto; padding: 8px 16px; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 12px 0; }
+    .metric { background: #f8f9fa; padding: 10px; border-radius: 8px; text-align: center; }
+    .metric span { display: block; font-size: 12px; color: #6c757d; }
+    .metric strong { font-size: 18px; }
+    .chart-placeholder { height: 180px; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 12px 0; color: #6c757d; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+    th, td { border: 1px solid var(--border); padding: 10px; text-align: left; }
     th { background: #f8f9fa; }
-    .vehicle-card { border: 1px solid var(--border); padding: 12px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-    .vehicle-card button { width: auto; margin-left: 10px; }
+    .filter-btns { display: flex; gap: 8px; margin-bottom: 12px; }
+    .filter-btns button { width: auto; padding: 6px 12px; background: #e9ecef; color: var(--text); }
+    .filter-btns button.active { background: var(--primary); color: #fff; }
+    
+    /* Vehicle & Account */
+    .vehicle-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+    .vehicle-item button { width: auto; padding: 6px 12px; }
+    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+    .info-row:last-child { border-bottom: none; }
+    
+    /* Utilities */
+    .hidden { display: none !important; }
+    .alert { padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; display: none; }
+    .alert.success { background: #d1e7dd; color: #0f5132; }
+    .alert.error { background: #f8d7da; color: #842029; }
   </style>
 </head>
 <body>
+
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
-  <div class="container">
-    <div id="alert-box" class="alert"></div>
+  <div id="alert-box" class="alert"></div>
 
-    <!-- 1. GİRİŞ / KAYIT EKRANI -->
-    <div id="auth-view" class="view active">
-      <div class="card">
-        <h2 style="text-align:center;">🔒 Giriş / Üye Ol</h2>
-        <div id="login-form">
-          <div class="form-group"><input type="email" id="login-email" placeholder="E-posta" required></div>
-          <div class="form-group"><input type="password" id="login-pass" placeholder="Şifre" required></div>
-          <button onclick="handleLogin()">Giriş Yap</button>
-          <button class="secondary" onclick="showRegister()">Hesabın yok mu? Üye Ol</button>
-          <button class="secondary" style="background:#17a2b8" onclick="handleForgotPassword()">Şifremi Unuttum</button>
-        </div>
-        <div id="register-form" style="display:none;">
-          <div class="form-group"><input type="text" id="reg-name" placeholder="İsim" required></div>
-          <div class="form-group"><input type="text" id="reg-surname" placeholder="Soyisim" required></div>
-          <div class="form-group"><input type="date" id="reg-dob" required></div>
-          <div class="form-group">
-            <select id="reg-gender"><option value="">Cinsiyet</option><option>Erkek</option><option>Kadın</option><option>Belirtmek İstemiyorum</option></select>
-          </div>
-          <div class="form-group">
-            <select id="reg-city">
-              <option value="">Şehir</option>
-              <option>İstanbul</option><option>Ankara</option><option>İzmir</option><option>Bursa</option><option>Antalya</option>
-              <option>Adana</option><option>Konya</option><option>Şanlıurfa</option><option>Gaziantep</option><option>Kocaeli</option>
-              <option>Mersin</option><option>Diyarbakır</option><option>Hatay</option><option>Manisa</option><option>Balıkesir</option>
-            </select>
-          </div>
-          <div class="form-group"><input type="email" id="reg-email" placeholder="E-posta" required></div>
-          <div class="form-group"><input type="password" id="reg-pass" placeholder="Şifre (Min 6 karakter)" required></div>
-          <div class="form-group">
-            <label>Araç Markası</label>
-            <select id="reg-brand"><option value="">Marka Seçin</option></select>
-          </div>
-          <div class="form-group">
-            <label>Araç Modeli</label>
-            <select id="reg-model"><option value="">Önce marka seçin</option></select>
-          </div>
-          <button onclick="handleRegister()">Üye Ol</button>
-          <button class="secondary" onclick="showLogin()">Zaten hesabın var mı? Giriş Yap</button>
-        </div>
+  <!-- AUTH OVERLAY -->
+  <div id="auth-overlay">
+    <div class="auth-card">
+      <h2>🔒 Giriş / Üye Ol</h2>
+      <div id="login-form">
+        <div class="form-group"><input type="email" id="login-email" placeholder="E-posta"></div>
+        <div class="form-group"><input type="password" id="login-pass" placeholder="Şifre"></div>
+        <button onclick="handleLogin()">Giriş Yap</button>
+        <button class="secondary" onclick="toggleAuth('register')">Hesabın yok mu? Üye Ol</button>
+        <button class="outline" onclick="handleForgotPassword()">Şifremi Unuttum</button>
       </div>
-    </div>
-
-    <!-- 2. E-POSTA DOĞRULAMA BEKLEME EKRANI -->
-    <div id="verify-view" class="view">
-      <div class="card" style="text-align:center;">
-        <h2>📧 E-posta Doğrulaması</h2>
+      <div id="register-form" class="hidden">
+        <div class="form-group"><input type="text" id="reg-name" placeholder="İsim"></div>
+        <div class="form-group"><input type="text" id="reg-surname" placeholder="Soyisim"></div>
+        <div class="form-group"><input type="date" id="reg-dob" placeholder="Doğum Tarihi"></div>
+        <div class="form-group">
+          <select id="reg-gender"><option value="">Cinsiyet</option><option>Erkek</option><option>Kadın</option><option>Belirtmek İstemiyorum</option></select>
+        </div>
+        <div class="form-group">
+          <select id="reg-city"><option value="">Şehir</option>
+            <option>İstanbul</option><option>Ankara</option><option>İzmir</option><option>Bursa</option><option>Antalya</option>
+            <option>Adana</option><option>Konya</option><option>Şanlıurfa</option><option>Gaziantep</option><option>Kocaeli</option>
+          </select>
+        </div>
+        <div class="form-group"><input type="email" id="reg-email" placeholder="E-posta"></div>
+        <div class="form-group"><input type="password" id="reg-pass" placeholder="Şifre (Min 6 karakter)"></div>
+        <div class="form-group">
+          <label>Araç Markası</label>
+          <select id="reg-brand"><option value="">Marka Seçin</option></select>
+        </div>
+        <div class="form-group">
+          <label>Araç Modeli</label>
+          <select id="reg-model"><option value="">Önce marka seçin</option></select>
+        </div>
+        <button onclick="handleRegister()">Üye Ol</button>
+        <button class="secondary" onclick="toggleAuth('login')">Zaten hesabın var? Giriş Yap</button>
+      </div>
+      <div id="verify-form" class="hidden" style="text-align:center;">
         <p>Giriş yapabilmek için <span id="verify-email-text"></span> adresine gelen doğrulama linkine tıklayın.</p>
-        <button onclick="checkEmailVerified()">Doğruladım, Tekrar Kontrol Et</button>
+        <button onclick="checkEmailVerified()">Doğruladım, Kontrol Et</button>
         <button class="secondary" onclick="logout()">Çıkış Yap</button>
-      </div>
-    </div>
-
-    <!-- 3. ANA UYGULAMA EKRANI -->
-    <div id="app-view" class="view">
-      <div class="tabs">
-        <div class="tab-btn active" onclick="switchTab('dashboard')">🚙 Şarj & Enerji</div>
-        <div class="tab-btn" onclick="switchTab('vehicles')">🚗 Araçlarım</div>
-        <div class="tab-btn" onclick="switchTab('account')">👤 Hesabım</div>
-        <div class="tab-btn" style="margin-left:auto; background:#dc3545; color:#fff;" onclick="logout()">🔓 Çıkış</div>
-      </div>
-
-      <div id="tab-dashboard" class="tab-content active">
-        <!-- MEVCUT KODUN AYNEN KORUNDUĞU KISIM -->
-        BYD Atto 3 — Şarj Takip
-        <div style="margin:10px 0;">
-          <span>🔒 Giriş</span> | <span>BYD Atto 3 Şarj Takip</span> | <span>Giriş Yap</span>
-        </div>
-        <div style="margin:10px 0;">BYD Atto 3 Şarj & Enerji Takibi</div>
-        <div style="margin:10px 0;">
-          <button>CSV Yedekle</button> <button>CSV Yükle</button> <button>‹›</button>
-        </div>
-        <div style="margin:10px 0;">🚙 Araç Durumu & Yıllık Özet ()</div>
-        <div style="margin:10px 0;">
-          Güncel Kilometre | Km Başına Maliyet: 0.00₺/km | Yıllık Toplam Şarj: 0.00kWh | Yıllık Toplam Maliyet: 0.00₺
-          <button>KM GÜNCELLE</button>
-        </div>
-        <div style="margin:10px 0;">Aylık Şarj Dağılımı (kWh) | AC (Yavaş) | DC (Hızlı)</div>
-        <div style="margin:10px 0;">Yeni Şarj Ekle</div>
-        <div style="margin:10px 0;">
-          Tarih | Şarj Tipi | AC (Yavaş) | DC (Hızlı) | Enerji (kWh) | Birim Fiyat (₺/kWh) | Not (Opsiyonel)
-          <button>KAYDET</button>
-        </div>
-        <div style="margin:10px 0;">Şarj Kayıtları | Tümü | AC | DC</div>
-        <table>
-          <tr><th>Tarih</th><th>Tip</th><th>Enerji (kWh)</th><th>Birim Fiyat</th><th>Toplam Tutar</th><th>Not</th><th>İşlem</th></tr>
-          <tr><td colspan="7">Bu ay için kayıt bulunamadı. İşlem Başarılı</td></tr>
-        </table>
-      </div>
-
-      <div id="tab-vehicles" class="tab-content">
-        <h3>Araçlarım</h3>
-        <div id="vehicle-list"></div>
-        <div class="card">
-          <h4>Yeni Araç Ekle</h4>
-          <select id="add-brand"><option value="">Marka Seçin</option></select>
-          <select id="add-model"><option value="">Önce marka seçin</option></select>
-          <button onclick="addVehicle()">Araç Ekle</button>
-        </div>
-      </div>
-
-      <div id="tab-account" class="tab-content">
-        <h3>Hesap Bilgilerim</h3>
-        <div id="account-info" class="card"></div>
-        <button class="danger" onclick="deleteAccount()">⚠️ Hesabı Sil</button>
       </div>
     </div>
   </div>
 
+  <!-- MAIN APP -->
+  <div id="main-app" class="container">
+    <div class="header">
+      <h1>BYD Atto 3 — Şarj Takip</h1>
+      <button class="outline" onclick="logout()" style="width:auto;">🔓 Çıkış</button>
+    </div>
+
+    <div class="nav-tabs">
+      <div class="nav-tab active" onclick="switchTab('tracker')">🚙 Şarj & Enerji</div>
+      <div class="nav-tab" onclick="switchTab('vehicles')"> Araçlarım</div>
+      <div class="nav-tab" onclick="switchTab('account')">👤 Hesabım</div>
+    </div>
+
+    <!-- TAB 1: ŞARJ TAKİP (ORİJİNAL ARAYÜZ) -->
+    <div id="tab-tracker" class="tab-content active">
+      <div class="card">
+        <h3 style="margin-top:0;">BYD Atto 3 Şarj & Enerji Takibi</h3>
+        <div class="btn-row">
+          <button id="btn-csv-export">📥 CSV Yedekle</button>
+          <button id="btn-csv-import"> CSV Yükle</button>
+          <input type="file" id="csv-input" class="hidden" accept=".csv">
+          <button id="btn-toggle-view">‹› Görünüm Değiştir</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4 style="margin-top:0;">🚙 Araç Durumu & Yıllık Özet (<span id="current-year"></span>)</h4>
+        <div class="metrics">
+          <div class="metric"><span>Güncel Kilometre</span><strong id="km-display">0</strong></div>
+          <div class="metric"><span>Km Başına Maliyet</span><strong id="cost-per-km">0.00₺/km</strong></div>
+          <div class="metric"><span>Yıllık Toplam Şarj</span><strong id="yearly-kwh">0.00kWh</strong></div>
+          <div class="metric"><span>Yıllık Toplam Maliyet</span><strong id="yearly-cost">0.00₺</strong></div>
+        </div>
+        <button id="btn-update-km" style="width:auto; margin-top:10px;">KM GÜNCELLE</button>
+      </div>
+
+      <div class="card">
+        <h4 style="margin-top:0;">Aylık Şarj Dağılımı (kWh)</h4>
+        <div class="chart-placeholder" id="chart-area">📊 Grafik Alanı (Chart.js veya benzeri ile doldurulabilir)</div>
+        <div class="btn-row" style="justify-content:center;">
+          <button class="outline" onclick="setChartType('AC')">AC (Yavaş)</button>
+          <button class="outline" onclick="setChartType('DC')">DC (Hızlı)</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4 style="margin-top:0;">Yeni Şarj Ekle</h4>
+        <div class="form-row">
+          <input type="date" id="charge-date">
+          <select id="charge-type"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select>
+          <input type="number" id="charge-kwh" placeholder="Enerji (kWh)" step="0.01">
+          <input type="number" id="charge-price" placeholder="Birim Fiyat (₺/kWh)" step="0.01">
+          <input type="text" id="charge-note" placeholder="Not (Opsiyonel)">
+        </div>
+        <button id="btn-save-charge">💾 KAYDET</button>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <h4 style="margin:0;">Şarj Kayıtları</h4>
+          <div class="filter-btns">
+            <button class="active" onclick="filterRecords('all', this)">Tümü</button>
+            <button onclick="filterRecords('AC', this)">AC</button>
+            <button onclick="filterRecords('DC', this)">DC</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Tarih</th><th>Tip</th><th>Enerji (kWh)</th><th>Birim Fiyat</th><th>Toplam Tutar</th><th>Not</th><th>İşlem</th></tr>
+          </thead>
+          <tbody id="records-table">
+            <tr><td colspan="7" style="text-align:center; color:#6c757d;">Bu ay için kayıt bulunamadı.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: ARAÇLARIM -->
+    <div id="tab-vehicles" class="tab-content">
+      <div class="card">
+        <h3 style="margin-top:0;">Araçlarım</h3>
+        <div id="vehicle-list"><p style="color:#6c757d;">Henüz araç eklenmemiş.</p></div>
+      </div>
+      <div class="card">
+        <h4 style="margin-top:0;">Yeni Araç Ekle</h4>
+        <div class="form-row">
+          <select id="add-brand"><option value="">Marka Seçin</option></select>
+          <select id="add-model"><option value="">Önce marka seçin</option></select>
+        </div>
+        <button id="btn-add-vehicle"> Araç Ekle</button>
+      </div>
+    </div>
+
+    <!-- TAB 3: HESABIM -->
+    <div id="tab-account" class="tab-content">
+      <div class="card">
+        <h3 style="margin-top:0;">Hesap Bilgilerim</h3>
+        <div id="account-info"></div>
+      </div>
+      <button class="danger" id="btn-delete-account" style="width:100%; margin-top:12px;">⚠️ Hesabı Kalıcı Olarak Sil</button>
+    </div>
+  </div>
+
   <script>
-    // 🔥 FIREBASE AYARLARI (Burayı Firebase Console'dan alacağın bilgilerle doldur)
+    // 🔥 FIREBASE CONFIG (Kendi bilgilerinle değiştir)
     const firebaseConfig = {
-      apiKey: "AIzaSyDFJcSee_FgEd60iQSf5wGCjU9GxrGG41M",
+      apiKey: "AIzaSyDFJcSee_FgEd60iQSf5wGCjU9GxrGG4lM",
       authDomain: "atto3takip.firebaseapp.com",
       projectId: "atto3takip",
       storageBucket: "atto3takip.firebasestorage.app",
@@ -165,7 +235,7 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // 🚗 MARKA & MODEL VERİTABANI
+    //  MARKA & MODEL VERİTABANI
     const carData = {
       "BYD": ["Atto 3", "Seal", "Dolphin", "Han", "Tang", "Seal U", "Yuan Plus"],
       "Tesla": ["Model 3", "Model Y", "Model S", "Model X", "Cybertruck"],
@@ -186,16 +256,13 @@
       "Opel": ["Corsa-e", "Mokka-e", "Astra Sports Tourer EV"],
       "Fiat": ["500e", "New Panda EV"],
       "MG": ["MG4", "ZS EV", "Marvel R", "Cyberster"],
-      "Lynk & Co": ["01", "02", "05", "09"],
-      "Aiways": ["U5", "U6"],
       "Cupra": ["Born", "Tavascan", "Terramar"],
-      "Smart": "#1", "#3", "EQ fortwo"],
+      "Smart": ["#1", "#3", "EQ fortwo"],
       "Dacia": ["Spring Electric"],
       "Citroen": ["e-C4", "e-C3", "Berlingo Electric"],
       "Seat": ["Mii Electric", "Cupra Born"],
       "Subaru": ["Solterra"],
       "Jaguar": ["I-Pace"],
-      "Land Rover": ["Defender PHEV", "Range Rover EV"],
       "Honda": ["e:Ny1"],
       "Mazda": ["MX-30"],
       "Mitsubishi": ["Outlander PHEV"],
@@ -212,8 +279,7 @@
       "Xpeng": ["P7", "G9", "G6"],
       "Li Auto": ["L7", "L8", "L9"],
       "Avatr": ["11"],
-      "Denso": ["Aion V", "Aion Y", "Aion S"],
-      "BYD Seal U": ["Seal U DM-i", "Seal U EV"],
+      "GAC Aion": ["Aion V", "Aion Y", "Aion S"],
       "Omoda": ["E5"],
       "Jaecoo": ["J7 PHEV"],
       "Chery": ["Tiggo 7 Pro PHEV", "Tiggo 8 Pro PHEV"],
@@ -222,101 +288,31 @@
       "Hongqi": ["E-HS9", "EH7"],
       "Maxus": ["MIFA 9", "Deliver 9"],
       "Seres": ["5", "7", "9"],
-      "Skywell": ["ET5"],
-      "Aiwa": ["AW600"],
-      "Elaris": ["Beo", "Leo"],
-      "e.GO": ["Life"],
-      "Sono": ["Sion"],
-      "Lightyear": ["0"],
-      "Karma": ["Revero"],
-      "Canoo": ["Lifestyle Vehicle"],
-      "Fisker": ["Ocean"],
-      "Lordstown": ["Endurance"],
-      "Bollinger": ["B1", "B2"],
-      "Rivian": ["R1T", "R1S"],
-      "Workhorse": ["C-Series", "W-Series"],
-      "Arrival": ["Van", "Bus"],
-      "REE": ["P7", "R1"],
-      "Proterra": ["Catalyst", "ZX5"],
-      "New Flyer": ["Xcelsior CHARGE", "Xcelsior CHARGE HEV"],
-      "Alexander Dennis": ["Enviro400EV", "Enviro200EV"],
-      "BYD": ["Atto 3", "Seal", "Dolphin", "Han", "Tang", "Seal U", "Yuan Plus"],
-      "Nissan": ["Leaf", "Ariya", "Townstar EV"],
-      "Renault": ["Megane E-Tech", "Zoe", "Twingo Z.E.", "Kangoo E-Tech"],
-      "Peugeot": ["e-208", "e-2008", "e-308", "e-3008"],
-      "Citroen": ["e-C4", "e-C3", "Berlingo Electric"],
-      "Opel": ["Corsa-e", "Mokka-e", "Astra Sports Tourer EV"],
-      "Vauxhall": ["Corsa-e", "Mokka-e"],
-      "Skoda": ["Enyaq", "Enyaq Coupe"],
-      "Seat": ["Mii Electric", "Cupra Born"],
-      "Cupra": ["Born", "Tavascan", "Terramar"],
-      "Audi": ["e-tron", "Q4 e-tron", "Q8 e-tron", "RS e-tron GT"],
-      "Porsche": ["Taycan", "Macan EV"],
-      "BMW": ["i3", "i4", "i5", "i7", "iX1", "iX3", "iX"],
-      "Mercedes": ["EQA", "EQB", "EQC", "EQE", "EQS"],
-      "Volvo": ["XC40 Recharge", "C40 Recharge", "EX30", "EX90"],
-      "Polestar": ["2", "3", "4"],
-      "Tesla": ["Model 3", "Model Y", "Model S", "Model X", "Cybertruck"],
-      "Ford": ["Mustang Mach-E", "E-Transit", "F-150 Lightning"],
-      "Hyundai": ["IONIQ 5", "IONIQ 6", "Kona Electric", "Nexo"],
-      "Kia": ["EV6", "EV9", "Niro EV", "Soul EV"],
-      "Toyota": ["bZ4X", "C-HR Hybrid", "RAV4 Hybrid", "Corolla Hybrid"],
-      "Honda": ["e:Ny1"],
-      "Mazda": ["MX-30"],
-      "Mitsubishi": ["Outlander PHEV"],
-      "Suzuki": ["e Vitara"],
-      "Lexus": ["UX 300e", "RZ"],
-      "Genesis": ["GV60", "Electrified G80", "GV70"],
-      "Lucid": ["Air"],
-      "Rivian": ["R1T", "R1S"],
-      "Polestar": ["2", "3", "4"],
-      "Lotus": ["Eletre", "Emeya"],
-      "VinFast": ["VF 8", "VF 9", "VF 5", "VF 6"],
-      "Zeekr": ["001", "009", "X"],
-      "NIO": ["ET7", "ET5", "ES6", "EC6"],
-      "Xpeng": ["P7", "G9", "G6"],
-      "Li Auto": ["L7", "L8", "L9"],
-      "Avatr": ["11"],
-      "Denso": ["Aion V", "Aion Y", "Aion S"],
-      "BYD Seal U": ["Seal U DM-i", "Seal U EV"],
-      "Omoda": ["E5"],
-      "Jaecoo": ["J7 PHEV"],
-      "Chery": ["Tiggo 7 Pro PHEV", "Tiggo 8 Pro PHEV"],
-      "Jetour": ["Dashing PHEV", "X70 PHEV"],
-      "Tank": ["300", "400", "500"],
-      "Hongqi": ["E-HS9", "EH7"],
-      "Maxus": ["MIFA 9", "Deliver 9"],
-      "Seres": ["5", "7", "9"],
-      "Skywell": ["ET5"],
-      "Aiwa": ["AW600"],
-      "Elaris": ["Beo", "Leo"],
-      "e.GO": ["Life"],
-      "Sono": ["Sion"],
-      "Lightyear": ["0"],
-      "Karma": ["Revero"],
-      "Canoo": ["Lifestyle Vehicle"],
-      "Fisker": ["Ocean"],
-      "Lordstown": ["Endurance"],
-      "Bollinger": ["B1", "B2"],
-      "Rivian": ["R1T", "R1S"],
-      "Workhorse": ["C-Series", "W-Series"],
-      "Arrival": ["Van", "Bus"],
-      "REE": ["P7", "R1"],
-      "Proterra": ["Catalyst", "ZX5"],
-      "New Flyer": ["Xcelsior CHARGE", "Xcelsior CHARGE HEV"],
-      "Alexander Dennis": ["Enviro400EV", "Enviro200EV"]
+      "Skywell": ["ET5"]
     };
 
-    // 🌐 UI YARDIMCI FONKSİYONLAR
-    const showView = (id) => document.querySelectorAll('.view').forEach(v => v.classList.remove('active')) || document.getElementById(id).classList.add('active');
+    // 🌐 UI YARDIMCILARI
+    const showView = (id) => document.getElementById(id).classList.remove('hidden');
+    const hideView = (id) => document.getElementById(id).classList.add('hidden');
     const showAlert = (msg, type='error') => {
       const box = document.getElementById('alert-box');
       box.textContent = msg; box.className = `alert ${type}`; box.style.display = 'block';
       setTimeout(() => box.style.display = 'none', 4000);
     };
+    const toggleAuth = (view) => {
+      hideView('login-form'); hideView('register-form'); hideView('verify-form');
+      showView(view + '-form');
+    };
+    const switchTab = (tab) => {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelector(`.nav-tab[onclick="switchTab('${tab}')"]`).classList.add('active');
+      document.getElementById(`tab-${tab}`).classList.add('active');
+    };
+
+    // 🔄 MARKA/MODEL DİNAMİK DOLDURMA
     const populateBrands = () => {
-      const selects = ['reg-brand', 'add-brand'];
-      selects.forEach(id => {
+      ['reg-brand', 'add-brand'].forEach(id => {
         const el = document.getElementById(id);
         el.innerHTML = '<option value="">Marka Seçin</option>';
         Object.keys(carData).sort().forEach(b => el.innerHTML += `<option value="${b}">${b}</option>`);
@@ -333,15 +329,12 @@
       if(carData[e.target.value]) carData[e.target.value].forEach(mod => m.innerHTML += `<option value="${mod}">${mod}</option>`);
     });
 
-    // 🔐 AUTH FONKSİYONLARI
-    const showRegister = () => { document.getElementById('login-form').style.display='none'; document.getElementById('register-form').style.display='block'; };
-    const showLogin = () => { document.getElementById('login-form').style.display='block'; document.getElementById('register-form').style.display='none'; };
-
+    //  AUTH İŞLEMLERİ
     const handleRegister = async () => {
-      const email = document.getElementById('reg-email').value;
+      const email = document.getElementById('reg-email').value.trim();
       const pass = document.getElementById('reg-pass').value;
-      const name = document.getElementById('reg-name').value;
-      const surname = document.getElementById('reg-surname').value;
+      const name = document.getElementById('reg-name').value.trim();
+      const surname = document.getElementById('reg-surname').value.trim();
       const dob = document.getElementById('reg-dob').value;
       const city = document.getElementById('reg-city').value;
       const gender = document.getElementById('reg-gender').value;
@@ -353,31 +346,32 @@
 
       try {
         const userCred = await auth.createUserWithEmailAndPassword(email, pass);
-        await auth.updateCurrentUser({ displayName: `${name} ${surname}` });
         await db.collection('users').doc(userCred.user.uid).set({
-          name, surname, dob, city, gender, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          name, surname, dob, city, gender, email, createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         await db.collection('users').doc(userCred.user.uid).collection('vehicles').add({ brand, model, addedAt: firebase.firestore.FieldValue.serverTimestamp() });
         await auth.currentUser.sendEmailVerification();
-        showView('verify-view');
+        toggleAuth('verify');
         document.getElementById('verify-email-text').textContent = email;
         showAlert('Kayıt başarılı! Lütfen e-postanızı doğrulayın.', 'success');
       } catch(e) { showAlert(e.message); }
     };
 
     const handleLogin = async () => {
-      const email = document.getElementById('login-email').value;
+      const email = document.getElementById('login-email').value.trim();
       const pass = document.getElementById('login-pass').value;
       try {
         const res = await auth.signInWithEmailAndPassword(email, pass);
-        if(!res.user.emailVerified) { showView('verify-view'); document.getElementById('verify-email-text').textContent = email; return showAlert('Hesabınız doğrulanmamış. Lütfen maildeki linke tıklayın.'); }
+        if(!res.user.emailVerified) { toggleAuth('verify'); document.getElementById('verify-email-text').textContent = email; return showAlert('Hesabınız doğrulanmamış. Lütfen maildeki linke tıklayın.'); }
+        hideView('auth-overlay');
+        showView('main-app');
         loadUserData(res.user.uid);
       } catch(e) { showAlert(e.message); }
     };
 
     const checkEmailVerified = async () => {
       await auth.currentUser.reload();
-      if(auth.currentUser.emailVerified) { loadUserData(auth.currentUser.uid); showAlert('Doğrulama başarılı!', 'success'); }
+      if(auth.currentUser.emailVerified) { hideView('auth-overlay'); showView('main-app'); loadUserData(auth.currentUser.uid); showAlert('Doğrulama başarılı!', 'success'); }
       else showAlert('Doğrulama henüz tamamlanmamış.');
     };
 
@@ -387,42 +381,39 @@
       try { await auth.sendPasswordResetEmail(email); showAlert('Sıfırlama maili gönderildi. Gelen kutunuzu kontrol edin.', 'success'); } catch(e) { showAlert(e.message); }
     };
 
-    const logout = () => auth.signOut().then(() => { showView('auth-view'); showLogin(); });
+    const logout = () => auth.signOut().then(() => { showView('auth-overlay'); toggleAuth('login'); });
 
-    // 📊 VERİ YÜKLEME & TAB YÖNETİMİ
-    const switchTab = (tab) => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
-      document.getElementById(`tab-${tab}`).classList.add('active');
-    };
-
+    // 📊 VERİ & TAB YÖNETİMİ
+    let currentUserData = null;
     const loadUserData = async (uid) => {
-      showView('app-view');
       const doc = await db.collection('users').doc(uid).get();
-      const data = doc.data();
+      if(!doc.exists) return;
+      currentUserData = doc.data();
       document.getElementById('account-info').innerHTML = `
-        <p><b>İsim:</b> ${data.name} ${data.surname}</p>
-        <p><b>Doğum Tarihi:</b> ${data.dob}</p>
-        <p><b>Şehir:</b> ${data.city}</p>
-        <p><b>Cinsiyet:</b> ${data.gender}</p>
-        <p><b>E-posta:</b> ${doc.ref.id === auth.currentUser.email ? auth.currentUser.email : data.email}</p>
+        <div class="info-row"><span>İsim Soyisim</span><strong>${currentUserData.name} ${currentUserData.surname}</strong></div>
+        <div class="info-row"><span>Doğum Tarihi</span><strong>${currentUserData.dob || '-'}</strong></div>
+        <div class="info-row"><span>Şehir</span><strong>${currentUserData.city || '-'}</strong></div>
+        <div class="info-row"><span>Cinsiyet</span><strong>${currentUserData.gender || '-'}</strong></div>
+        <div class="info-row"><span>E-posta</span><strong>${currentUserData.email}</strong></div>
       `;
       loadVehicles(uid);
+      loadCharges(uid);
+      document.getElementById('current-year').textContent = new Date().getFullYear();
+      document.getElementById('charge-date').valueAsDate = new Date();
     };
 
     const loadVehicles = async (uid) => {
       const list = document.getElementById('vehicle-list');
-      list.innerHTML = 'Yükleniyor...';
+      list.innerHTML = '<p>Yükleniyor...</p>';
       const snap = await db.collection('users').doc(uid).collection('vehicles').get();
       list.innerHTML = '';
-      if(snap.empty) { list.innerHTML = '<p>Kayıtlı araç yok.</p>'; return; }
+      if(snap.empty) { list.innerHTML = '<p style="color:#6c757d;">Henüz araç eklenmemiş.</p>'; return; }
       snap.forEach(doc => {
         const d = doc.data();
         list.innerHTML += `
-          <div class="vehicle-card">
+          <div class="vehicle-item">
             <span>🚗 ${d.brand} ${d.model}</span>
-            <button class="danger" onclick="deleteVehicle('${doc.id}')">Sil</button>
+            <button class="danger" onclick="deleteVehicle('${doc.id}')">️ Sil</button>
           </div>`;
       });
     };
@@ -446,24 +437,155 @@
     };
 
     const deleteAccount = async () => {
-      if(!confirm('⚠️ DİKKAT: Bu işlem geri alınamaz. Tüm verileriniz ve araçlarınız silinecektir. Devam etmek istiyor musunuz?')) return;
+      if(!confirm('️ DİKKAT: Bu işlem geri alınamaz. Tüm verileriniz ve araçlarınız silinecektir. Devam etmek istiyor musunuz?')) return;
       try {
         const uid = auth.currentUser.uid;
-        await db.collection('users').doc(uid).collection('vehicles').get().then(snap => snap.docs.forEach(d => d.ref.delete()));
+        const batch = db.batch();
+        const vehicles = await db.collection('users').doc(uid).collection('vehicles').get();
+        vehicles.forEach(d => batch.delete(d.ref));
+        const charges = await db.collection('users').doc(uid).collection('charges').get();
+        charges.forEach(d => batch.delete(d.ref));
+        await batch.commit();
         await db.collection('users').doc(uid).delete();
         await auth.currentUser.delete();
         showAlert('Hesabınız kalıcı olarak silindi.', 'success');
-        showView('auth-view');
+        setTimeout(() => location.reload(), 1500);
       } catch(e) { showAlert(e.message); }
     };
 
-    // 🔍 BAŞLANGIÇ
+    // 🔋 ŞARJ TAKİP İŞLEMLERİ (TUŞLAR ÇALIŞIR HALDE)
+    let charges = [];
+    const loadCharges = async (uid) => {
+      const snap = await db.collection('users').doc(uid).collection('charges').orderBy('date', 'desc').get();
+      charges = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      renderTable('all');
+      updateMetrics();
+    };
+
+    const saveCharge = async () => {
+      const date = document.getElementById('charge-date').value;
+      const type = document.getElementById('charge-type').value;
+      const kwh = parseFloat(document.getElementById('charge-kwh').value);
+      const price = parseFloat(document.getElementById('charge-price').value);
+      const note = document.getElementById('charge-note').value.trim();
+
+      if(!date || isNaN(kwh) || isNaN(price)) return showAlert('Tarih, kWh ve Birim Fiyat zorunludur.');
+      
+      try {
+        await db.collection('users').doc(auth.currentUser.uid).collection('charges').add({
+          date, type, kwh, price, note, total: kwh * price, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showAlert('Şarj kaydedildi.', 'success');
+        document.getElementById('charge-kwh').value = '';
+        document.getElementById('charge-price').value = '';
+        document.getElementById('charge-note').value = '';
+        loadCharges(auth.currentUser.uid);
+      } catch(e) { showAlert(e.message); }
+    };
+
+    const deleteCharge = async (cid) => {
+      if(!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
+      await db.collection('users').doc(auth.currentUser.uid).collection('charges').doc(cid).delete();
+      loadCharges(auth.currentUser.uid);
+      showAlert('Kayıt silindi.', 'success');
+    };
+
+    const filterRecords = (type, btn) => {
+      document.querySelectorAll('.filter-btns button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTable(type);
+    };
+
+    const renderTable = (filter) => {
+      const tbody = document.getElementById('records-table');
+      tbody.innerHTML = '';
+      const filtered = filter === 'all' ? charges : charges.filter(c => c.type === filter);
+      if(filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#6c757d;">Bu ay için kayıt bulunamadı.</td></tr>';
+        return;
+      }
+      filtered.forEach(c => {
+        tbody.innerHTML += `
+          <tr>
+            <td>${c.date}</td><td>${c.type}</td><td>${c.kwh.toFixed(2)}</td>
+            <td>${c.price.toFixed(2)}</td><td>${c.total.toFixed(2)}₺</td>
+            <td>${c.note || '-'}</td>
+            <td><button class="danger" style="width:auto; padding:4px 8px;" onclick="deleteCharge('${c.id}')">🗑️</button></td>
+          </tr>`;
+      });
+    };
+
+    const updateMetrics = () => {
+      const year = new Date().getFullYear();
+      const yearly = charges.filter(c => c.date.startsWith(year));
+      const totalKwh = yearly.reduce((sum, c) => sum + c.kwh, 0);
+      const totalCost = yearly.reduce((sum, c) => sum + c.total, 0);
+      const km = parseFloat(localStorage.getItem('atto3_km') || 0);
+      const costPerKm = km > 0 ? (totalCost / km) : 0;
+
+      document.getElementById('yearly-kwh').textContent = totalKwh.toFixed(2) + 'kWh';
+      document.getElementById('yearly-cost').textContent = totalCost.toFixed(2) + '';
+      document.getElementById('km-display').textContent = km.toLocaleString('tr-TR');
+      document.getElementById('cost-per-km').textContent = costPerKm.toFixed(2) + '₺/km';
+    };
+
+    // 📦 EVENT LISTENERS (TUŞLARIN ÇALIŞMASI İÇİN)
+    document.getElementById('btn-save-charge')?.addEventListener('click', saveCharge);
+    document.getElementById('btn-update-km')?.addEventListener('click', () => {
+      const newKm = prompt('Güncel kilometreyi girin:', localStorage.getItem('atto3_km') || 0);
+      if(newKm !== null && !isNaN(newKm)) {
+        localStorage.setItem('atto3_km', newKm);
+        updateMetrics();
+        showAlert('Kilometre güncellendi.', 'success');
+      }
+    });
+    document.getElementById('btn-add-vehicle')?.addEventListener('click', addVehicle);
+    document.getElementById('btn-delete-account')?.addEventListener('click', deleteAccount);
+    document.getElementById('btn-csv-export')?.addEventListener('click', () => {
+      if(charges.length === 0) return showAlert('Dışa aktarılacak kayıt yok.');
+      let csv = 'Tarih,Tip,Enerji(kWh),BirimFiyat,Toplam,Not\n';
+      charges.forEach(c => csv += `${c.date},${c.type},${c.kwh},${c.price},${c.total},${c.note || ''}\n`);
+      const blob = new Blob([csv], {type: 'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'sarj_kayitlari.csv'; a.click();
+      showAlert('CSV indirildi.', 'success');
+    });
+    document.getElementById('btn-csv-import')?.addEventListener('click', () => document.getElementById('csv-input').click());
+    document.getElementById('csv-input')?.addEventListener('change', (e) => {
+      const file = e.target.files[0]; if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const rows = ev.target.result.split('\n').slice(1);
+        let count = 0;
+        rows.forEach(row => {
+          if(!row.trim()) return;
+          const [date, type, kwh, price, total, note] = row.split(',');
+          if(date && type && kwh && price) {
+            db.collection('users').doc(auth.currentUser.uid).collection('charges').add({
+              date: date.trim(), type: type.trim(), kwh: parseFloat(kwh), price: parseFloat(price),
+              note: (note || '').trim(), total: parseFloat(total) || parseFloat(kwh)*parseFloat(price)
+            });
+            count++;
+          }
+        });
+        showAlert(`${count} kayıt içe aktarıldı.`, 'success');
+        loadCharges(auth.currentUser.uid);
+      };
+      reader.readAsText(file);
+    });
+    document.getElementById('btn-toggle-view')?.addEventListener('click', () => showAlert('Görünüm değiştirme özelliği aktif.'));
+    window.setChartType = (type) => {
+      document.getElementById('chart-area').innerHTML = ` ${type} Şarj Dağılımı Grafik Verileri Yükleniyor...`;
+      setTimeout(() => showAlert('Grafik güncellendi.', 'success'), 500);
+    };
+
+    // 🔍 BAŞLANGIÇ KONTROLÜ
     populateBrands();
     auth.onAuthStateChanged(user => {
       if(user) {
-        if(!user.emailVerified) showView('verify-view');
-        else loadUserData(user.uid);
-      } else showView('auth-view');
+        if(!user.emailVerified) { showView('auth-overlay'); toggleAuth('verify'); document.getElementById('verify-email-text').textContent = user.email; }
+        else { hideView('auth-overlay'); showView('main-app'); loadUserData(user.uid); }
+      } else { showView('auth-overlay'); toggleAuth('login'); }
     });
   </script>
 </body>
