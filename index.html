@@ -5,62 +5,142 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BYD Atto 3 — Şarj Takip</title>
   <style>
-    :root { --bg: #f4f6f9; --card: #fff; --primary: #0d6efd; --danger: #dc3545; --text: #212529; --border: #dee2e6; }
+    /*  ORİJİNAL SİTE TEMASI (KOYU MOD) */
+    :root {
+      --bg-main: #121212;
+      --bg-card: #1e1e1e;
+      --bg-input: #2c2c2c;
+      --text-main: #e0e0e0;
+      --text-muted: #a0a0a0;
+      --primary: #0d6efd; /* Orijinal Mavi */
+      --primary-hover: #0b5ed7;
+      --danger: #dc3545;
+      --border: #333;
+    }
+
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      margin: 0;
+      padding: 20px;
+    }
+
     .container { max-width: 960px; margin: 0 auto; }
+
+    /* AUTH OVERLAY (Giriş/Kayıt Ekranı) */
+    #auth-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.85); /* Karartılmış arka plan */
+      z-index: 2000;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(5px);
+    }
+
+    .auth-card {
+      background: var(--bg-card);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      width: 100%; max-width: 420px;
+      border: 1px solid var(--border);
+    }
+
+    .auth-card h2 { text-align: center; margin-top: 0; color: #fff; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 14px; color: var(--text-muted); }
     
-    /* Auth Overlay */
-    #auth-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-    .auth-card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-    .auth-card h2 { text-align: center; margin-top: 0; }
-    .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 14px; }
-    input, select, button { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
-    button { background: var(--primary); color: #fff; cursor: pointer; font-weight: 600; border: none; }
-    button:hover { opacity: 0.9; }
-    button.secondary { background: #6c757d; margin-top: 8px; }
+    input, select, button {
+      width: 100%; padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: var(--bg-input);
+      color: #fff;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+
+    /* TUŞLAR */
+    button {
+      background: var(--primary);
+      color: #fff; cursor: pointer;
+      font-weight: 600; border: none;
+      transition: background 0.2s;
+    }
+    button:hover { background: var(--primary-hover); }
+    
+    button.secondary {
+      background: #495057;
+      margin-top: 10px;
+    }
+    button.secondary:hover { background: #5a6268; }
+    
+    button.outline {
+      background: transparent;
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      margin-top: 10px;
+    }
+    button.outline:hover { background: rgba(13, 110, 253, 0.1); }
+
     button.danger { background: var(--danger); }
-    button.outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
-    
-    /* Main App Layout */
+    button.danger:hover { background: #bb2d3b; }
+
+    /* ANA UYGULAMA */
     #main-app { display: none; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
-    .header h1 { margin: 0; font-size: 20px; }
-    .nav-tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid var(--border); padding-bottom: 8px; }
-    .nav-tab { padding: 8px 16px; border-radius: 8px 8px 0 0; cursor: pointer; background: #e9ecef; font-weight: 500; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .header h1 { margin: 0; font-size: 22px; }
+    
+    .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; }
+    .nav-tab { padding: 10px 20px; border-radius: 8px; cursor: pointer; background: var(--bg-card); font-weight: 500; color: var(--text-muted); transition: 0.2s; }
+    .nav-tab:hover { color: #fff; }
     .nav-tab.active { background: var(--primary); color: #fff; }
-    .tab-content { display: none; }
+
+    .tab-content { display: none; animation: fadeIn 0.3s; }
     .tab-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .card {
+      background: var(--bg-card);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0; }
+    .btn-row button { width: auto; padding: 10px 16px; }
     
-    /* Original UI Sections */
-    .card { background: var(--card); padding: 16px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); margin-bottom: 16px; }
-    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-    .btn-row button { width: auto; padding: 8px 16px; }
-    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 12px 0; }
-    .metric { background: #f8f9fa; padding: 10px; border-radius: 8px; text-align: center; }
-    .metric span { display: block; font-size: 12px; color: #6c757d; }
-    .metric strong { font-size: 18px; }
-    .chart-placeholder { height: 180px; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 12px 0; color: #6c757d; }
-    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
-    th, td { border: 1px solid var(--border); padding: 10px; text-align: left; }
-    th { background: #f8f9fa; }
-    .filter-btns { display: flex; gap: 8px; margin-bottom: 12px; }
-    .filter-btns button { width: auto; padding: 6px 12px; background: #e9ecef; color: var(--text); }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 15px 0; }
+    .metric { background: var(--bg-input); padding: 15px; border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+    .metric span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
+    .metric strong { font-size: 20px; color: #fff; }
+
+    .chart-placeholder { height: 200px; background: var(--bg-input); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 15px 0; color: var(--text-muted); border: 1px dashed var(--border); }
+    
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 15px; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+    th, td { border: 1px solid var(--border); padding: 12px; text-align: left; }
+    th { background: var(--bg-input); color: var(--text-muted); }
+    td { color: var(--text-main); }
+    
+    .filter-btns { display: flex; gap: 8px; margin-bottom: 15px; }
+    .filter-btns button { width: auto; padding: 8px 14px; background: var(--bg-input); color: var(--text-main); }
     .filter-btns button.active { background: var(--primary); color: #fff; }
+
+    .vehicle-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; background: var(--bg-input); }
+    .vehicle-item button { width: auto; padding: 8px 12px; }
     
-    /* Vehicle & Account */
-    .vehicle-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
-    .vehicle-item button { width: auto; padding: 6px 12px; }
-    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+    .info-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed var(--border); }
     .info-row:last-child { border-bottom: none; }
-    
-    /* Utilities */
+
     .hidden { display: none !important; }
-    .alert { padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; display: none; }
-    .alert.success { background: #d1e7dd; color: #0f5132; }
-    .alert.error { background: #f8d7da; color: #842029; }
+    .alert { padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; display: none; position: fixed; top: 20px; right: 20px; z-index: 3000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .alert.success { background: #198754; color: #fff; }
+    .alert.error { background: var(--danger); color: #fff; }
   </style>
 </head>
 <body>
@@ -79,10 +159,11 @@
       <div id="login-form">
         <div class="form-group"><input type="email" id="login-email" placeholder="E-posta"></div>
         <div class="form-group"><input type="password" id="login-pass" placeholder="Şifre"></div>
-        <button onclick="handleLogin()">Giriş Yap</button>
-        <button class="secondary" onclick="toggleAuth('register')">Hesabın yok mu? Üye Ol</button>
-        <button class="outline" onclick="handleForgotPassword()">Şifremi Unuttum</button>
+        <button id="btn-login" onclick="handleLogin()">Giriş Yap</button>
+        <button class="secondary" id="btn-show-register" onclick="toggleAuth('register')">Hesabın yok mu? Üye Ol</button>
+        <button class="outline" id="btn-forgot" onclick="handleForgotPassword()">Şifremi Unuttum</button>
       </div>
+      
       <div id="register-form" class="hidden">
         <div class="form-group"><input type="text" id="reg-name" placeholder="İsim"></div>
         <div class="form-group"><input type="text" id="reg-surname" placeholder="Soyisim"></div>
@@ -106,13 +187,15 @@
           <label>Araç Modeli</label>
           <select id="reg-model"><option value="">Önce marka seçin</option></select>
         </div>
-        <button onclick="handleRegister()">Üye Ol</button>
-        <button class="secondary" onclick="toggleAuth('login')">Zaten hesabın var? Giriş Yap</button>
+        <!-- DÜZELTİLEN BUTON -->
+        <button id="btn-register" onclick="handleRegister()">Üye Ol</button>
+        <button class="secondary" id="btn-show-login" onclick="toggleAuth('login')">Zaten hesabın var? Giriş Yap</button>
       </div>
+
       <div id="verify-form" class="hidden" style="text-align:center;">
-        <p>Giriş yapabilmek için <span id="verify-email-text"></span> adresine gelen doğrulama linkine tıklayın.</p>
-        <button onclick="checkEmailVerified()">Doğruladım, Kontrol Et</button>
-        <button class="secondary" onclick="logout()">Çıkış Yap</button>
+        <p>Giriş yapabilmek için <span id="verify-email-text" style="color:var(--primary); font-weight:bold;"></span> adresine gelen doğrulama linkine tıklayın.</p>
+        <button id="btn-check-verify" onclick="checkEmailVerified()">Doğruladım, Kontrol Et</button>
+        <button class="secondary" id="btn-logout-verify" onclick="logout()">Çıkış Yap</button>
       </div>
     </div>
   </div>
@@ -130,7 +213,7 @@
       <div class="nav-tab" onclick="switchTab('account')">👤 Hesabım</div>
     </div>
 
-    <!-- TAB 1: ŞARJ TAKİP (ORİJİNAL ARAYÜZ) -->
+    <!-- TAB 1: ŞARJ TAKİP -->
     <div id="tab-tracker" class="tab-content active">
       <div class="card">
         <h3 style="margin-top:0;">BYD Atto 3 Şarj & Enerji Takibi</h3>
@@ -155,7 +238,7 @@
 
       <div class="card">
         <h4 style="margin-top:0;">Aylık Şarj Dağılımı (kWh)</h4>
-        <div class="chart-placeholder" id="chart-area">📊 Grafik Alanı (Chart.js veya benzeri ile doldurulabilir)</div>
+        <div class="chart-placeholder" id="chart-area">📊 Grafik Alanı</div>
         <div class="btn-row" style="justify-content:center;">
           <button class="outline" onclick="setChartType('AC')">AC (Yavaş)</button>
           <button class="outline" onclick="setChartType('DC')">DC (Hızlı)</button>
@@ -188,7 +271,7 @@
             <tr><th>Tarih</th><th>Tip</th><th>Enerji (kWh)</th><th>Birim Fiyat</th><th>Toplam Tutar</th><th>Not</th><th>İşlem</th></tr>
           </thead>
           <tbody id="records-table">
-            <tr><td colspan="7" style="text-align:center; color:#6c757d;">Bu ay için kayıt bulunamadı.</td></tr>
+            <tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Bu ay için kayıt bulunamadı.</td></tr>
           </tbody>
         </table>
       </div>
@@ -198,7 +281,7 @@
     <div id="tab-vehicles" class="tab-content">
       <div class="card">
         <h3 style="margin-top:0;">Araçlarım</h3>
-        <div id="vehicle-list"><p style="color:#6c757d;">Henüz araç eklenmemiş.</p></div>
+        <div id="vehicle-list"><p style="color:var(--text-muted);">Henüz araç eklenmemiş.</p></div>
       </div>
       <div class="card">
         <h4 style="margin-top:0;">Yeni Araç Ekle</h4>
@@ -221,7 +304,7 @@
   </div>
 
   <script>
-    // 🔥 FIREBASE CONFIG (Kendi bilgilerinle değiştir)
+    // 🔥 FIREBASE CONFIG
     const firebaseConfig = {
       apiKey: "AIzaSyDFJcSee_FgEd60iQSf5wGCjU9GxrGG4lM",
       authDomain: "atto3takip.firebaseapp.com",
@@ -235,7 +318,7 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    //  MARKA & MODEL VERİTABANI
+    //  MARKA & MODEL
     const carData = {
       "BYD": ["Atto 3", "Seal", "Dolphin", "Han", "Tang", "Seal U", "Yuan Plus"],
       "Tesla": ["Model 3", "Model Y", "Model S", "Model X", "Cybertruck"],
@@ -299,10 +382,13 @@
       box.textContent = msg; box.className = `alert ${type}`; box.style.display = 'block';
       setTimeout(() => box.style.display = 'none', 4000);
     };
+    
+    // DÜZELTİLEN GEÇİŞ FONKSİYONU
     const toggleAuth = (view) => {
       hideView('login-form'); hideView('register-form'); hideView('verify-form');
       showView(view + '-form');
     };
+    
     const switchTab = (tab) => {
       document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -310,69 +396,105 @@
       document.getElementById(`tab-${tab}`).classList.add('active');
     };
 
-    // 🔄 MARKA/MODEL DİNAMİK DOLDURMA
+    // 🔄 MARKA/MODEL DOLDURMA
     const populateBrands = () => {
       ['reg-brand', 'add-brand'].forEach(id => {
         const el = document.getElementById(id);
+        if(!el) return;
         el.innerHTML = '<option value="">Marka Seçin</option>';
         Object.keys(carData).sort().forEach(b => el.innerHTML += `<option value="${b}">${b}</option>`);
       });
     };
-    document.getElementById('reg-brand')?.addEventListener('change', e => {
-      const m = document.getElementById('reg-model');
-      m.innerHTML = '<option value="">Model Seçin</option>';
-      if(carData[e.target.value]) carData[e.target.value].forEach(mod => m.innerHTML += `<option value="${mod}">${mod}</option>`);
-    });
-    document.getElementById('add-brand')?.addEventListener('change', e => {
-      const m = document.getElementById('add-model');
-      m.innerHTML = '<option value="">Model Seçin</option>';
-      if(carData[e.target.value]) carData[e.target.value].forEach(mod => m.innerHTML += `<option value="${mod}">${mod}</option>`);
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('reg-brand')?.addEventListener('change', e => {
+        const m = document.getElementById('reg-model');
+        m.innerHTML = '<option value="">Model Seçin</option>';
+        if(carData[e.target.value]) carData[e.target.value].forEach(mod => m.innerHTML += `<option value="${mod}">${mod}</option>`);
+      });
+      document.getElementById('add-brand')?.addEventListener('change', e => {
+        const m = document.getElementById('add-model');
+        m.innerHTML = '<option value="">Model Seçin</option>';
+        if(carData[e.target.value]) carData[e.target.value].forEach(mod => m.innerHTML += `<option value="${mod}">${mod}</option>`);
+      });
     });
 
     //  AUTH İŞLEMLERİ
     const handleRegister = async () => {
-      const email = document.getElementById('reg-email').value.trim();
-      const pass = document.getElementById('reg-pass').value;
-      const name = document.getElementById('reg-name').value.trim();
-      const surname = document.getElementById('reg-surname').value.trim();
-      const dob = document.getElementById('reg-dob').value;
-      const city = document.getElementById('reg-city').value;
-      const gender = document.getElementById('reg-gender').value;
-      const brand = document.getElementById('reg-brand').value;
-      const model = document.getElementById('reg-model').value;
-
-      if(!email || !pass || !name || !surname || !brand || !model) return showAlert('Lütfen tüm zorunlu alanları doldurun.');
-      if(pass.length < 6) return showAlert('Şifre en az 6 karakter olmalı.');
-
+      const btn = document.getElementById('btn-register');
+      btn.textContent = 'İşleniyor...'; btn.disabled = true;
+      
       try {
+        const email = document.getElementById('reg-email').value.trim();
+        const pass = document.getElementById('reg-pass').value;
+        const name = document.getElementById('reg-name').value.trim();
+        const surname = document.getElementById('reg-surname').value.trim();
+        const dob = document.getElementById('reg-dob').value;
+        const city = document.getElementById('reg-city').value;
+        const gender = document.getElementById('reg-gender').value;
+        const brand = document.getElementById('reg-brand').value;
+        const model = document.getElementById('reg-model').value;
+
+        if(!email || !pass || !name || !surname || !brand || !model) throw new Error('Lütfen tüm zorunlu alanları doldurun.');
+        if(pass.length < 6) throw new Error('Şifre en az 6 karakter olmalı.');
+
         const userCred = await auth.createUserWithEmailAndPassword(email, pass);
         await db.collection('users').doc(userCred.user.uid).set({
           name, surname, dob, city, gender, email, createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         await db.collection('users').doc(userCred.user.uid).collection('vehicles').add({ brand, model, addedAt: firebase.firestore.FieldValue.serverTimestamp() });
         await auth.currentUser.sendEmailVerification();
+        
         toggleAuth('verify');
         document.getElementById('verify-email-text').textContent = email;
         showAlert('Kayıt başarılı! Lütfen e-postanızı doğrulayın.', 'success');
-      } catch(e) { showAlert(e.message); }
+      } catch(e) { 
+        showAlert(e.message); 
+      } finally {
+        btn.textContent = 'Üye Ol'; btn.disabled = false;
+      }
     };
 
     const handleLogin = async () => {
-      const email = document.getElementById('login-email').value.trim();
-      const pass = document.getElementById('login-pass').value;
+      const btn = document.getElementById('btn-login');
+      btn.textContent = 'Giriş Yapılıyor...'; btn.disabled = true;
+      
       try {
+        const email = document.getElementById('login-email').value.trim();
+        const pass = document.getElementById('login-pass').value;
         const res = await auth.signInWithEmailAndPassword(email, pass);
-        if(!res.user.emailVerified) { toggleAuth('verify'); document.getElementById('verify-email-text').textContent = email; return showAlert('Hesabınız doğrulanmamış. Lütfen maildeki linke tıklayın.'); }
+        
+        if(!res.user.emailVerified) { 
+          toggleAuth('verify'); 
+          document.getElementById('verify-email-text').textContent = email; 
+          throw new Error('Hesabınız doğrulanmamış. Lütfen maildeki linke tıklayın.'); 
+        }
+        
         hideView('auth-overlay');
         showView('main-app');
         loadUserData(res.user.uid);
-      } catch(e) { showAlert(e.message); }
+      } catch(e) { 
+        showAlert(e.message); 
+      } finally {
+        btn.textContent = 'Giriş Yap'; btn.disabled = false;
+      }
     };
 
     const checkEmailVerified = async () => {
-      await auth.currentUser.reload();
-      if(auth.currentUser.emailVerified) { hideView('auth-overlay'); showView('main-app'); loadUserData(auth.currentUser.uid); showAlert('Doğrulama başarılı!', 'success'); }
-      else showAlert('Doğrulama henüz tamamlanmamış.');
+      const btn = document.getElementById('btn-check-verify');
+      btn.textContent = 'Kontrol Ediliyor...'; btn.disabled = true;
+      
+      try {
+        await auth.currentUser.reload();
+        if(auth.currentUser.emailVerified) { 
+          hideView('auth-overlay'); showView('main-app'); 
+          loadUserData(auth.currentUser.uid); 
+          showAlert('Doğrulama başarılı!', 'success'); 
+        } else {
+          showAlert('Doğrulama henüz tamamlanmamış. Mail kutunuzu kontrol edin.');
+        }
+      } catch(e) { showAlert(e.message); }
+      finally { btn.textContent = 'Doğruladım, Kontrol Et'; btn.disabled = false; }
     };
 
     const handleForgotPassword = async () => {
@@ -407,7 +529,7 @@
       list.innerHTML = '<p>Yükleniyor...</p>';
       const snap = await db.collection('users').doc(uid).collection('vehicles').get();
       list.innerHTML = '';
-      if(snap.empty) { list.innerHTML = '<p style="color:#6c757d;">Henüz araç eklenmemiş.</p>'; return; }
+      if(snap.empty) { list.innerHTML = '<p style="color:var(--text-muted);">Henüz araç eklenmemiş.</p>'; return; }
       snap.forEach(doc => {
         const d = doc.data();
         list.innerHTML += `
@@ -453,7 +575,7 @@
       } catch(e) { showAlert(e.message); }
     };
 
-    // 🔋 ŞARJ TAKİP İŞLEMLERİ (TUŞLAR ÇALIŞIR HALDE)
+    // 🔋 ŞARJ TAKİP İŞLEMLERİ
     let charges = [];
     const loadCharges = async (uid) => {
       const snap = await db.collection('users').doc(uid).collection('charges').orderBy('date', 'desc').get();
@@ -501,7 +623,7 @@
       tbody.innerHTML = '';
       const filtered = filter === 'all' ? charges : charges.filter(c => c.type === filter);
       if(filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#6c757d;">Bu ay için kayıt bulunamadı.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Bu ay için kayıt bulunamadı.</td></tr>';
         return;
       }
       filtered.forEach(c => {
@@ -529,58 +651,62 @@
       document.getElementById('cost-per-km').textContent = costPerKm.toFixed(2) + '₺/km';
     };
 
-    // 📦 EVENT LISTENERS (TUŞLARIN ÇALIŞMASI İÇİN)
-    document.getElementById('btn-save-charge')?.addEventListener('click', saveCharge);
-    document.getElementById('btn-update-km')?.addEventListener('click', () => {
-      const newKm = prompt('Güncel kilometreyi girin:', localStorage.getItem('atto3_km') || 0);
-      if(newKm !== null && !isNaN(newKm)) {
-        localStorage.setItem('atto3_km', newKm);
-        updateMetrics();
-        showAlert('Kilometre güncellendi.', 'success');
-      }
+    // 📦 EVENT LISTENERS
+    document.addEventListener('DOMContentLoaded', () => {
+      populateBrands();
+      
+      document.getElementById('btn-save-charge')?.addEventListener('click', saveCharge);
+      document.getElementById('btn-update-km')?.addEventListener('click', () => {
+        const newKm = prompt('Güncel kilometreyi girin:', localStorage.getItem('atto3_km') || 0);
+        if(newKm !== null && !isNaN(newKm)) {
+          localStorage.setItem('atto3_km', newKm);
+          updateMetrics();
+          showAlert('Kilometre güncellendi.', 'success');
+        }
+      });
+      document.getElementById('btn-add-vehicle')?.addEventListener('click', addVehicle);
+      document.getElementById('btn-delete-account')?.addEventListener('click', deleteAccount);
+      document.getElementById('btn-csv-export')?.addEventListener('click', () => {
+        if(charges.length === 0) return showAlert('Dışa aktarılacak kayıt yok.');
+        let csv = 'Tarih,Tip,Enerji(kWh),BirimFiyat,Toplam,Not\n';
+        charges.forEach(c => csv += `${c.date},${c.type},${c.kwh},${c.price},${c.total},${c.note || ''}\n`);
+        const blob = new Blob([csv], {type: 'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'sarj_kayitlari.csv'; a.click();
+        showAlert('CSV indirildi.', 'success');
+      });
+      document.getElementById('btn-csv-import')?.addEventListener('click', () => document.getElementById('csv-input').click());
+      document.getElementById('csv-input')?.addEventListener('change', (e) => {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const rows = ev.target.result.split('\n').slice(1);
+          let count = 0;
+          rows.forEach(row => {
+            if(!row.trim()) return;
+            const [date, type, kwh, price, total, note] = row.split(',');
+            if(date && type && kwh && price) {
+              db.collection('users').doc(auth.currentUser.uid).collection('charges').add({
+                date: date.trim(), type: type.trim(), kwh: parseFloat(kwh), price: parseFloat(price),
+                note: (note || '').trim(), total: parseFloat(total) || parseFloat(kwh)*parseFloat(price)
+              });
+              count++;
+            }
+          });
+          showAlert(`${count} kayıt içe aktarıldı.`, 'success');
+          loadCharges(auth.currentUser.uid);
+        };
+        reader.readAsText(file);
+      });
+      document.getElementById('btn-toggle-view')?.addEventListener('click', () => showAlert('Görünüm değiştirme özelliği aktif.'));
     });
-    document.getElementById('btn-add-vehicle')?.addEventListener('click', addVehicle);
-    document.getElementById('btn-delete-account')?.addEventListener('click', deleteAccount);
-    document.getElementById('btn-csv-export')?.addEventListener('click', () => {
-      if(charges.length === 0) return showAlert('Dışa aktarılacak kayıt yok.');
-      let csv = 'Tarih,Tip,Enerji(kWh),BirimFiyat,Toplam,Not\n';
-      charges.forEach(c => csv += `${c.date},${c.type},${c.kwh},${c.price},${c.total},${c.note || ''}\n`);
-      const blob = new Blob([csv], {type: 'text/csv'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'sarj_kayitlari.csv'; a.click();
-      showAlert('CSV indirildi.', 'success');
-    });
-    document.getElementById('btn-csv-import')?.addEventListener('click', () => document.getElementById('csv-input').click());
-    document.getElementById('csv-input')?.addEventListener('change', (e) => {
-      const file = e.target.files[0]; if(!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const rows = ev.target.result.split('\n').slice(1);
-        let count = 0;
-        rows.forEach(row => {
-          if(!row.trim()) return;
-          const [date, type, kwh, price, total, note] = row.split(',');
-          if(date && type && kwh && price) {
-            db.collection('users').doc(auth.currentUser.uid).collection('charges').add({
-              date: date.trim(), type: type.trim(), kwh: parseFloat(kwh), price: parseFloat(price),
-              note: (note || '').trim(), total: parseFloat(total) || parseFloat(kwh)*parseFloat(price)
-            });
-            count++;
-          }
-        });
-        showAlert(`${count} kayıt içe aktarıldı.`, 'success');
-        loadCharges(auth.currentUser.uid);
-      };
-      reader.readAsText(file);
-    });
-    document.getElementById('btn-toggle-view')?.addEventListener('click', () => showAlert('Görünüm değiştirme özelliği aktif.'));
+
     window.setChartType = (type) => {
       document.getElementById('chart-area').innerHTML = ` ${type} Şarj Dağılımı Grafik Verileri Yükleniyor...`;
       setTimeout(() => showAlert('Grafik güncellendi.', 'success'), 500);
     };
 
-    // 🔍 BAŞLANGIÇ KONTROLÜ
-    populateBrands();
+    // 🔍 BAŞLANGIÇ
     auth.onAuthStateChanged(user => {
       if(user) {
         if(!user.emailVerified) { showView('auth-overlay'); toggleAuth('verify'); document.getElementById('verify-email-text').textContent = user.email; }
