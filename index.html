@@ -7,11 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy,
-           serverTimestamp, setDoc, getDoc, getDocs, updateDoc }
+           serverTimestamp, setDoc, getDoc, getDocs, updateDoc, where }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
            sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged,
@@ -34,7 +36,6 @@
   const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
                      'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
-  // Türkiye'deki elektrikli araçlar
   const TR_EVS = {
     'Togg':          ['T10X','T10F'],
     'BYD':           ['Atto 3','Atto 2','Seal','Dolphin','Han','Tang EV','Seagull','Sea Lion 6'],
@@ -67,6 +68,34 @@
     'OMODA':         ['E5'],
   };
 
+  const STATION_BRANDS = {
+    'Eşarj':     { color:'#00b4d8', icon:'' },
+    'ZES':       { color:'#0077b6', icon:'🔌' },
+    'Trugo':     { color:'#e63946', icon:'⚡' },
+    'Volta':     { color:'#2a9d8f', icon:'🔋' },
+    'Şarj.net':  { color:'#e9c46a', icon:'⚡' },
+    'Efilli':    { color:'#f4a261', icon:'🔌' },
+    'Tesla':     { color:'#1d1d1f', icon:'⚡' },
+    'Aşarj':     { color:'#606c38', icon:'⚡' },
+    'Sokak Şarj':'#457b9d' },
+    'Diğer':     { color:'#6c757d', icon:'🔌' }
+  };
+
+  const DEFAULT_STATIONS = [
+    { name:'Eşarj İstasyonu - Levent', brand:'Eşarj', lat:41.0828, lng:29.0138, address:'Levent, Büyükdere Cad. No:185, Şişli/İstanbul', acPrice:8.50, dcPrice:12.90, hasAC:true, hasDC:true, powerAC:22, powerDC:150, available:true, addedBy:'system' },
+    { name:'ZES Şarj İstasyonu - Ataşehir', brand:'ZES', lat:40.9833, lng:29.1167, address:'Ataşehir Bulvarı, Ataşehir/İstanbul', acPrice:7.80, dcPrice:11.50, hasAC:true, hasDC:true, powerAC:22, powerDC:120, available:true, addedBy:'system' },
+    { name:'Trugo Hızlı Şarj - Kozyatağı', brand:'Trugo', lat:40.9675, lng:29.0697, address:'Kozyatağı Metro Çıkışı, Kadıköy/İstanbul', acPrice:9.20, dcPrice:14.50, hasAC:true, hasDC:true, powerAC:11, powerDC:180, available:true, addedBy:'system' },
+    { name:'Eşarj - Caddebostan', brand:'Eşarj', lat:40.9720, lng:29.0580, address:'Caddebostan Sahil Yolu, Kadıköy/İstanbul', acPrice:8.20, dcPrice:12.40, hasAC:true, hasDC:false, powerAC:22, powerDC:0, available:true, addedBy:'system' },
+    { name:'Volta Şarj - Beşiktaş', brand:'Volta', lat:41.0420, lng:29.0080, address:'Beşiktaş Meydanı, Beşiktaş/İstanbul', acPrice:7.50, dcPrice:11.00, hasAC:true, hasDC:true, powerAC:22, powerDC:50, available:false, addedBy:'system' },
+    { name:'ZES - Maslak', brand:'ZES', lat:41.1095, lng:29.0170, address:'Maslak 1453 AVM, Sarıyer/İstanbul', acPrice:8.00, dcPrice:12.00, hasAC:true, hasDC:true, powerAC:22, powerDC:120, available:true, addedBy:'system' },
+    { name:'Tesla Supercharger - Nişantaşı', brand:'Tesla', lat:41.0490, lng:28.9920, address:'Abdi İpekçi Cad. Nişantaşı, Şişli/İstanbul', acPrice:0, dcPrice:10.50, hasAC:false, hasDC:true, powerAC:0, powerDC:250, available:true, addedBy:'system' },
+    { name:'Efilli Şarj - Bakırköy', brand:'Efilli', lat:40.9800, lng:28.8780, address:'İncirli Cad. Bakırköy, Bakırköy/İstanbul', acPrice:6.90, dcPrice:10.50, hasAC:true, hasDC:true, powerAC:22, powerDC:60, available:true, addedBy:'system' },
+    { name:'Şarj.net - Taksim', brand:'Şarj.net', lat:41.0370, lng:28.9840, address:'Taksim Meydanı, Beyoğlu/İstanbul', acPrice:9.50, dcPrice:13.80, hasAC:true, hasDC:true, powerAC:11, powerDC:100, available:true, addedBy:'system' },
+    { name:'Eşarj - Pendik', brand:'Eşarj', lat:40.8780, lng:29.2330, address:'Pendik Marina, Pendik/İstanbul', acPrice:7.90, dcPrice:11.80, hasAC:true, hasDC:true, powerAC:22, powerDC:150, available:true, addedBy:'system' },
+    { name:'Aşarj - Üsküdar', brand:'Aşarj', lat:41.0230, lng:29.0170, address:'Üsküdar Sahil, Üsküdar/İstanbul', acPrice:8.10, dcPrice:12.20, hasAC:true, hasDC:true, powerAC:22, powerDC:120, available:false, addedBy:'system' },
+    { name:'Trugo - Kadıköy Rıhtım', brand:'Trugo', lat:40.9900, lng:29.0270, address:'Kadıköy Rıhtım, Kadıköy/İstanbul', acPrice:9.00, dcPrice:14.00, hasAC:true, hasDC:true, powerAC:22, powerDC:180, available:true, addedBy:'system' },
+  ];
+
   let currentUser       = null;
   let userProfile       = null;
   let vehicles          = [];
@@ -78,8 +107,15 @@
   let viewMonth         = new Date().getMonth();
   let unsubCharges      = null;
   let unsubVehicles     = null;
+  let unsubStations     = null;
+  let map               = null;
+  let mapMarkers        = [];
+  let userLat           = null;
+  let userLng           = null;
+  let allStations       = [];
+  let stationFilter     = 'all';
+  let sortBy            = 'distance';
 
-  // AUTH
   onAuthStateChanged(auth, async user => {
     if (user) {
       currentUser = user;
@@ -96,6 +132,7 @@
       currentUser=null; userProfile=null; vehicles=[]; data=[];
       if(unsubCharges){unsubCharges();unsubCharges=null;}
       if(unsubVehicles){unsubVehicles();unsubVehicles=null;}
+      if(unsubStations){unsubStations();unsubStations=null;}
       showScreen('loginScreen');
     }
   });
@@ -108,7 +145,6 @@
     if(el) el.style.display=(id==='appContent')?'block':'flex';
   }
 
-  // LOGIN
   window.login = async function() {
     const email=document.getElementById('lEmail').value.trim();
     const pw=document.getElementById('lPassword').value;
@@ -128,7 +164,6 @@
   window.goToRegister = function(){showScreen('registerScreen');fillBrandSelect('rCarMake','rCarModel');};
   window.goToLogin    = function(){showScreen('loginScreen');};
 
-  // REGISTER
   window.register = async function() {
     const fn=document.getElementById('rFirstName').value.trim();
     const ln=document.getElementById('rLastName').value.trim();
@@ -160,7 +195,6 @@
     }catch(e){showErr('registerError',errMsg(e.code));btn.disabled=false;btn.textContent='Kayıt Ol';}
   };
 
-  // VERIFY
   window.checkVerification = async function() {
     await auth.currentUser.reload();
     if(auth.currentUser.emailVerified){
@@ -177,10 +211,10 @@
   window.logout = async function() {
     if(unsubCharges){unsubCharges();unsubCharges=null;}
     if(unsubVehicles){unsubVehicles();unsubVehicles=null;}
+    if(unsubStations){unsubStations();unsubStations=null;}
     await signOut(auth);
   };
 
-  // PROFILE
   async function loadUserProfile() {
     const snap=await getDoc(doc(db,'users',currentUser.uid));
     if(snap.exists()) userProfile=snap.data();
@@ -230,7 +264,6 @@
     }catch(e){alert('Hata: '+e.message);}
   };
 
-  // VEHICLES
   function listenVehicles() {
     if(unsubVehicles) unsubVehicles();
     const ref=collection(db,'users',currentUser.uid,'vehicles');
@@ -246,9 +279,7 @@
       listenCharges();
     },err=>{
       console.error('Vehicles error:', err.code, err.message);
-      if(err.code === 'permission-denied' || err.code === 'missing-permissions') {
-        showFirestoreRulesModal();
-      }
+      if(err.code === 'permission-denied' || err.code === 'missing-permissions') showFirestoreRulesModal();
     });
   }
 
@@ -308,11 +339,8 @@
       }
       showToast('Araç silindi!');
     }catch(e){
-      if(e.code === 'permission-denied' || e.code === 'missing-permissions') {
-        showFirestoreRulesModal();
-      } else {
-        alert('Hata: '+e.message);
-      }
+      if(e.code === 'permission-denied' || e.code === 'missing-permissions') showFirestoreRulesModal();
+      else alert('Hata: '+e.message);
     }
   };
 
@@ -328,11 +356,8 @@
       document.getElementById('avModel').innerHTML='<option value="">Model seçin…</option>';
       showToast('Araç eklendi!');
     }catch(e){
-      if(e.code === 'permission-denied' || e.code === 'missing-permissions') {
-        showFirestoreRulesModal();
-      } else {
-        alert('Hata: '+e.message);
-      }
+      if(e.code === 'permission-denied' || e.code === 'missing-permissions') showFirestoreRulesModal();
+      else alert('Hata: '+e.message);
     }
   };
 
@@ -342,7 +367,6 @@
     if(t) t.textContent=v?v.make+' '+v.model:'EV Şarj Takip';
   }
 
-  // CHARGES
   function listenCharges() {
     if(!selectedVehicleId||!currentUser) return;
     if(unsubCharges) unsubCharges();
@@ -353,9 +377,7 @@
       renderAll();
     },err=>{
       console.error('Charges error:', err.code, err.message);
-      if(err.code === 'permission-denied' || err.code === 'missing-permissions') {
-        showFirestoreRulesModal();
-      }
+      if(err.code === 'permission-denied' || err.code === 'missing-permissions') showFirestoreRulesModal();
     });
   }
 
@@ -374,11 +396,8 @@
       document.getElementById('fNote').value='';
       showToast('Kayıt eklendi!');
     }catch(e){
-      if(e.code === 'permission-denied' || e.code === 'missing-permissions') {
-        showFirestoreRulesModal();
-      } else {
-        alert('Hata: '+e.message);
-      }
+      if(e.code === 'permission-denied' || e.code === 'missing-permissions') showFirestoreRulesModal();
+      else alert('Hata: '+e.message);
     }
   };
 
@@ -386,11 +405,8 @@
     if(!confirm('Bu kaydı silmek istiyor musunuz?')) return;
     try{await deleteDoc(doc(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges',fid));}
     catch(e){
-      if(e.code === 'permission-denied' || e.code === 'missing-permissions') {
-        showFirestoreRulesModal();
-      } else {
-        alert('Hata: '+e.message);
-      }
+      if(e.code === 'permission-denied' || e.code === 'missing-permissions') showFirestoreRulesModal();
+      else alert('Hata: '+e.message);
     }
   };
 
@@ -403,17 +419,14 @@
       selectedVehicle=vehicles.find(v=>v.id===selectedVehicleId)||null;
       renderGlobal(); renderVehiclesSection(); showToast('Kilometre güncellendi!');
     }catch(e){
-      if(e.code === 'permission-denied' || e.code === 'missing-permissions') {
-        showFirestoreRulesModal();
-      } else {
-        alert('Hata: '+e.message);
-      }
+      if(e.code === 'permission-denied' || e.code === 'missing-permissions') showFirestoreRulesModal();
+      else alert('Hata: '+e.message);
     }
   };
 
   window.exportCSV = function() {
     if(!data.length){alert('Dışa aktarılacak kayıt bulunamadı.');return;}
-    let csv="data:text/csv;charset=utf-8,\uFEFF";
+    let csv="text/csv;charset=utf-8,\uFEFF";
     csv+="Tarih,Tip,Enerji (kWh),Birim Fiyat (TL),Toplam Tutar (TL),Not\n";
     [...data].sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(r=>{
       csv+=`${r.date},${r.type},${r.kwh.toFixed(2)},${r.price.toFixed(2)},${(r.kwh*r.price).toFixed(2)},${(r.note||'').replace(/,/g,' ')}\n`;
@@ -449,7 +462,269 @@
     input.click();
   };
 
-  // RENDER
+  // ==================== STATIONS ====================
+  function haversineDistance(lat1,lng1,lat2,lng2){
+    const R=6371;
+    const dLat=(lat2-lat1)*Math.PI/180;
+    const dLng=(lng2-lng1)*Math.PI/180;
+    const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+
+  function getUserLocation(){
+    return new Promise((resolve,reject)=>{
+      if(!navigator.geolocation){reject(new Error('Tarayıcı konum desteklemiyor'));return;}
+      navigator.geolocation.getCurrentPosition(
+        pos=>resolve({lat:pos.coords.latitude,lng:pos.coords.longitude}),
+        err=>reject(err),
+        {enableHighAccuracy:true,timeout:10000,maximumAge:300000}
+      );
+    });
+  }
+
+  async function loadUserLocation(){
+    try{
+      const pos=await getUserLocation();
+      userLat=pos.lat; userLng=pos.lng;
+      renderStations();
+      if(map){map.setView([pos.lat,pos.lng],12);}
+    }catch(e){
+      console.warn('Konum alınamadı:',e.message);
+      userLat=41.0082; userLng=28.9784;
+      renderStations();
+      if(map){map.setView([userLat,userLng],12);}
+    }
+  }
+
+  function listenStations(){
+    if(unsubStations) unsubStations();
+    const ref=collection(db,'chargingStations');
+    unsubStations=onSnapshot(ref,snap=>{
+      const userStations=snap.docs.filter(d=>d.data().addedBy!==undefined).map(d=>({id:d.id,...d.data()}));
+      const all=[...DEFAULT_STATIONS.map((s,i)=>({id:'default_'+i,...s,distance:999})),...userStations.map(s=>({...s,distance:999}))];
+      if(userLat!==null&&userLng!==null){
+        all.forEach(s=>{s.distance=haversineDistance(userLat,userLng,s.lat,s.lng);});
+        all.sort((a,b)=>a.distance-b.distance);
+      }
+      allStations=all;
+      renderStations();
+    },err=>{
+      console.error('Stations error:',err.code,err.message);
+      if(err.code==='permission-denied'||err.code==='missing-permissions') showFirestoreRulesModal();
+    });
+  }
+
+  function getStationsForDisplay(){
+    let list=[...allStations];
+    if(stationFilter!=='all') list=list.filter(s=>s.brand===stationFilter);
+    if(sortBy==='distance') list.sort((a,b)=>(a.distance||999)-(b.distance||999));
+    else if(sortBy==='acPrice') list.sort((a,b)=>(a.acPrice||999)-(b.acPrice||999));
+    else if(sortBy==='dcPrice') list.sort((a,b)=>(a.dcPrice||999)-(b.dcPrice||999));
+    else if(sortBy==='brand') list.sort((a,b)=>a.brand.localeCompare(b.brand,'tr'));
+    return list;
+  }
+
+  function renderStations(){
+    const list=getStationsForDisplay();
+    const container=document.getElementById('stationsList');
+    if(!container) return;
+
+    if(!list.length){container.innerHTML='<p style="color:var(--muted);text-align:center;padding:32px">İstasyon bulunamadı.</p>';return;}
+
+    container.innerHTML=list.map(s=>{
+      const brandInfo=STATION_BRANDS[s.brand]||STATION_BRANDS['Diğer'];
+      const distStr=s.distance<1?`${Math.round(s.distance*1000)}m`:s.distance.toFixed(1)+'km';
+      return `
+      <div class="station-card" onclick="openStationDetail('${s.id||s.name}')">
+        <div class="st-left">
+          <div class="st-brand-icon" style="background:${brandInfo.color}">${brandInfo.icon}</div>
+          <div class="st-info">
+            <div class="st-name">${s.name}</div>
+            <div class="st-address">${s.address||''}</div>
+            <div class="st-connectors">
+              ${s.hasAC?`<span class="st-badge ac">AC ${s.powerAC? s.powerAC+'kW':''}</span>`:''}
+              ${s.hasDC?`<span class="st-badge dc">DC ${s.powerDC? s.powerDC+'kW':''}</span>`:''}
+            </div>
+          </div>
+        </div>
+        <div class="st-right">
+          <div class="st-distance">📍 ${distStr}</div>
+          <div class="st-prices">
+            ${s.hasAC?`<div class="st-price">AC <strong>${s.acPrice}₺</strong></div>`:''}
+            ${s.hasDC?`<div class="st-price">DC <strong>${s.dcPrice}₺</strong></div>`:''}
+          </div>
+          <div class="st-status ${s.available?'st-online':'st-offline'}">${s.available?'● Açık':'● Kapalı'}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    updateMapMarkers(list);
+  }
+
+  function updateMapMarkers(list){
+    if(!map) return;
+    mapMarkers.forEach(m=>map.removeLayer(m));
+    mapMarkers=[];
+
+    list.forEach(s=>{
+      const brandInfo=STATION_BRANDS[s.brand]||STATION_BRANDS['Diğer'];
+      const markerColor=s.available?'#00ff88':'#ef4444';
+      const iconHtml=`
+        <div style="background:${markerColor};border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);">${brandInfo.icon}</div>`;
+      const customIcon=L.divIcon({html:iconHtml,className:'',iconSize:[28,28],iconAnchor:[14,14]});
+      const marker=L.marker([s.lat,s.lng],{icon:customIcon}).addTo(map);
+      marker.bindPopup(`
+        <div style="font-family:'Outfit',sans-serif;min-width:200px;padding:4px;">
+          <div style="font-size:14px;font-weight:800;margin-bottom:4px;">${s.name}</div>
+          <div style="font-size:11px;color:#666;margin-bottom:6px;">${s.address||''}</div>
+          <div style="font-size:12px;margin-bottom:4px;">
+            ${s.hasAC?`<span style="color:var(--ac);">⚡ AC ${s.powerAC?s.powerAC+'kW':''} — ${s.acPrice}₺/kWh</span><br>`:''}
+            ${s.hasDC?`<span style="color:var(--dc);">⚡ DC ${s.powerDC?s.powerDC+'kW':''} — ${s.dcPrice}₺/kWh</span>`:''}
+          </div>
+          <div style="font-size:11px;color:${s.available?'#00aa55':'#ef4444'};font-weight:700;">${s.available?'Açık':'Kapalı'}</div>
+        </div>`);
+      mapMarkers.push(marker);
+    });
+
+    if(userLat&&userLng){
+      const userIcon=L.divIcon({
+        html:'<div style="background:var(--ac);border-radius:50%;width:16px;height:16px;border:3px solid #fff;box-shadow:0 0 12px rgba(0,229,255,.6);"></div>',
+        className:'',iconSize:[16,16],iconAnchor:[8,8]
+      });
+      const userMarker=L.marker([userLat,userLng],{icon:userIcon}).addTo(map);
+      userMarker.bindPopup('<div style="font-family:Outfit;font-weight:700;font-size:13px;">📍 Konumunuz</div>');
+      mapMarkers.push(userMarker);
+    }
+  }
+
+  window.openStationDetail = function(stationId){
+    const s=allStations.find(st=>(st.id||st.name)===stationId);
+    if(!s) return;
+    const brandInfo=STATION_BRANDS[s.brand]||STATION_BRANDS['Diğer'];
+    const distStr=s.distance<1?`${Math.round(s.distance*1000)}m`:s.distance.toFixed(1)+'km';
+    const modal=document.getElementById('stationDetailModal');
+    if(modal) modal.remove();
+
+    const modalHtml=`
+      <div id="stationDetailModal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)this.remove()">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:16px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;color:var(--text);font-family:'Outfit',sans-serif;">
+          <div style="padding:24px 28px 0;display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div class="st-brand-icon" style="background:${brandInfo.color};width:44px;height:44px;font-size:22px;">${brandInfo.icon}</div>
+              <div>
+                <div style="font-size:18px;font-weight:800;">${s.name}</div>
+                <div style="font-size:12px;color:var(--muted);">${s.brand}</div>
+              </div>
+            </div>
+            <button onclick="document.getElementById('stationDetailModal').remove()" style="background:transparent;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:4px;">✕</button>
+          </div>
+          <div style="padding:18px 28px;">
+            <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+              <div class="sd-badge"><span style="color:var(--muted);font-size:11px;">Mesafe</span><br><strong>📍 ${distStr}</strong></div>
+              <div class="sd-badge ${s.available?'sd-online':'sd-offline'}"><span style="color:var(--muted);font-size:11px;">Durum</span><br><strong>${s.available?'● Açık':'● Kapalı'}</strong></div>
+            </div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+              📌 ${s.address||'Adres bilgisi yok'}
+            </div>
+            <div style="margin-bottom:18px;">
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:10px;">Bağlantı Tipleri</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                ${s.hasAC?`
+                  <div class="sd-conn-card ac">
+                    <div style="font-size:20px;">🔌</div>
+                    <div style="font-weight:800;font-size:14px;">AC</div>
+                    <div style="font-size:11px;color:var(--muted);">${s.powerAC?s.powerAC+'kW':'Standart'}</div>
+                    <div style="font-size:16px;font-weight:800;color:var(--ac);margin-top:4px;">${s.acPrice}₺<span style="font-size:11px;font-weight:500;">/kWh</span></div>
+                  </div>`:''}
+                ${s.hasDC?`
+                  <div class="sd-conn-card dc">
+                    <div style="font-size:20px;">⚡</div>
+                    <div style="font-weight:800;font-size:14px;">DC</div>
+                    <div style="font-size:11px;color:var(--muted);">${s.powerDC?s.powerDC+'kW':'Standart'}</div>
+                    <div style="font-size:16px;font-weight:800;color:var(--dc);margin-top:4px;">${s.dcPrice}₺<span style="font-size:11px;font-weight:500;">/kWh</span></div>
+                  </div>`:''}
+              </div>
+            </div>
+            <a href="https://www.google.com/maps?q=${s.lat},${s.lng}" target="_blank" style="display:block;background:linear-gradient(90deg,var(--ac),var(--accent));color:#000;border:none;border-radius:10px;padding:13px;text-align:center;font-family:'Outfit',sans-serif;font-size:14px;font-weight:800;cursor:pointer;text-decoration:none;text-transform:uppercase;letter-spacing:1px;">
+              🗺️ Haritada Göster
+            </a>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend',modalHtml);
+  };
+
+  window.setStationFilter = function(brand,el){
+    stationFilter=brand;
+    document.querySelectorAll('.st-filter-btn').forEach(b=>b.classList.remove('active'));
+    if(el) el.classList.add('active');
+    renderStations();
+  };
+  window.setStationSort = function(type,el){
+    sortBy=type;
+    document.querySelectorAll('.st-sort-btn').forEach(b=>b.classList.remove('active'));
+    if(el) el.classList.add('active');
+    renderStations();
+  };
+
+  window.addStation = async function(){
+    const name=document.getElementById('stName').value.trim();
+    const brand=document.getElementById('stBrand').value;
+    const addr=document.getElementById('stAddress').value.trim();
+    const lat=parseFloat(document.getElementById('stLat').value);
+    const lng=parseFloat(document.getElementById('stLng').value);
+    const acP=parseFloat(document.getElementById('stAcPrice').value)||0;
+    const dcP=parseFloat(document.getElementById('stDcPrice').value)||0;
+    const hasAC=document.getElementById('stHasAC').checked;
+    const hasDC=document.getElementById('stHasDC').checked;
+    const pAC=parseInt(document.getElementById('stAcPower').value)||22;
+    const pDC=parseInt(document.getElementById('stDcPower').value)||50;
+
+    if(!name||!brand||isNaN(lat)||isNaN(lng)){alert('Lütfen tüm zorunlu alanları doldurun.');return;}
+    try{
+      await addDoc(collection(db,'chargingStations'),{
+        name,brand,address:addr,lat,lng,
+        acPrice:acP,dcPrice:dcP,
+        hasAC,hasDC,powerAC:pAC,powerDC:pDC,
+        available:true,
+        addedBy:currentUser.uid,
+        addedAt:serverTimestamp()
+      });
+      document.getElementById('stName').value='';
+      document.getElementById('stAddress').value='';
+      document.getElementById('stLat').value='';
+      document.getElementById('stLng').value='';
+      document.getElementById('stAcPrice').value='';
+      document.getElementById('stDcPrice').value='';
+      showToast('İstasyon eklendi!');
+    }catch(e){
+      if(e.code==='permission-denied'||e.code==='missing-permissions') showFirestoreRulesModal();
+      else alert('Hata: '+e.message);
+    }
+  };
+
+  window.pickLocation = function(){
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(pos=>{
+        document.getElementById('stLat').value=pos.coords.latitude.toFixed(6);
+        document.getElementById('stLng').value=pos.coords.longitude.toFixed(6);
+        showToast('Konum alındı!');
+      },()=>alert('Konum alınamadı.'));
+    }
+  };
+
+  function initMap(){
+    const el=document.getElementById('stationsMap');
+    if(!el) return;
+    if(map){map.invalidateSize();return;}
+    map=L.map('stationsMap',{zoomControl:true}).setView([41.0082,28.9784],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom:19
+    }).addTo(map);
+  }
+
+  // ==================== RENDER ====================
   window.renderAll = function() {
     const ml=document.getElementById('monthLabel');
     const yt=document.getElementById('yearTitle');
@@ -486,12 +761,12 @@
       <div class="stat-card ac-card">
         <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>Aylık AC Şarj</div>
         <div class="stat-value"><span id="animAcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
-        <div class="stat-sub">${ac.length} seans · ₺${ac.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div>
+        <div class="stat-sub">${ac.length} seans</div>
       </div>
       <div class="stat-card dc-card">
         <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg>Aylık DC Şarj</div>
         <div class="stat-value"><span id="animDcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
-        <div class="stat-sub">${dc.length} seans · ${dc.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div>
+        <div class="stat-sub">${dc.length} seans</div>
       </div>
       <div class="stat-card cost-card">
         <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>Aylık Maliyet</div>
@@ -567,7 +842,6 @@
   window.prevMonth = function(){viewMonth--;if(viewMonth<0){viewMonth=11;viewYear--;}renderAll();};
   window.nextMonth = function(){viewMonth++;if(viewMonth>11){viewMonth=0;viewYear++;}renderAll();};
 
-  // TURKISH EV SELECTS
   function fillBrandSelect(brandId,modelId) {
     const bSel=document.getElementById(brandId);if(!bSel) return;
     bSel.innerHTML='<option value="">Marka seçin…</option>';
@@ -582,6 +856,14 @@
     bSel.onchange=()=>onBrandChange(brandId,modelId);
   }
 
+  function fillStationBrandSelect(selId){
+    const bSel=document.getElementById(selId);if(!bSel) return;
+    bSel.innerHTML='<option value="">Marka seçin…</option>';
+    Object.keys(STATION_BRANDS).sort().forEach(mk=>{
+      const o=document.createElement('option');o.value=mk;o.textContent=mk;bSel.appendChild(o);
+    });
+  }
+
   window.onBrandChange = function(brandId,modelId) {
     const mk=document.getElementById(brandId).value;
     const mSel=document.getElementById(modelId);if(!mSel) return;
@@ -590,20 +872,27 @@
       TR_EVS[mk].map(m=>`<option value="${m}">${m}</option>`).join('');
   };
 
-  // NAV
   window.showNavSection = function(id) {
-    ['chargingSection','vehiclesSection','accountSection'].forEach(s=>{
+    ['chargingSection','vehiclesSection','stationsSection','accountSection'].forEach(s=>{
       const el=document.getElementById(s);if(el) el.style.display='none';
     });
     document.getElementById(id).style.display='block';
     document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-    const map={chargingSection:'navCharging',vehiclesSection:'navVehicles',accountSection:'navAccount'};
+    const map={chargingSection:'navCharging',vehiclesSection:'navVehicles',stationsSection:'navStations',accountSection:'navAccount'};
     document.getElementById(map[id])?.classList.add('active');
     if(id==='accountSection') renderAccountSection();
     if(id==='vehiclesSection'){renderVehiclesSection();fillBrandSelect('avMake','avModel');}
+    if(id==='stationsSection'){
+      setTimeout(()=>{
+        initMap();
+        loadUserLocation();
+        listenStations();
+        fillStationBrandSelect('stBrand');
+        fillStationBrandSelect('stFilterBrand');
+      },100);
+    }
   };
 
-  // HELPERS
   window.showToast = function(msg='İşlem başarılı!') {
     const t=document.getElementById('toast');
     t.querySelector('.toast-msg').textContent=msg;
@@ -623,71 +912,62 @@
     return m[code]||'Hata: '+code;
   }
 
-  // FIRESTORE RULES MODAL
   function showFirestoreRulesModal() {
     const overlay = document.getElementById('firestoreRulesModal');
-    if (overlay) {
-      overlay.style.display = 'flex';
-    } else {
-      const modalHTML = `
-        <div id="firestoreRulesModal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
-          <div style="background:var(--panel);border:1px solid var(--border);border-radius:16px;max-width:700px;width:100%;max-height:90vh;overflow-y:auto;padding:28px;color:var(--text);font-family:'Outfit',sans-serif;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-              <h2 style="font-size:18px;font-weight:800;color:var(--danger);display:flex;align-items:center;gap:8px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-                Firestore Güvenlik Kuralları Gerekli
-              </h2>
-              <button onclick="document.getElementById('firestoreRulesModal').style.display='none'" style="background:transparent;border:none;color:var(--muted);font-size:24px;cursor:pointer;padding:4px 8px;">✕</button>
+    if (overlay) { overlay.style.display = 'flex'; return; }
+    const modalHTML = `
+      <div id="firestoreRulesModal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:16px;max-width:700px;width:100%;max-height:90vh;overflow-y:auto;padding:28px;color:var(--text);font-family:'Outfit',sans-serif;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+            <h2 style="font-size:18px;font-weight:800;color:var(--danger);display:flex;align-items:center;gap:8px;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+              Firestore Güvenlik Kuralları Gerekli
+            </h2>
+            <button onclick="document.getElementById('firestoreRulesModal').style.display='none'" style="background:transparent;border:none;color:var(--muted);font-size:24px;cursor:pointer;padding:4px 8px;">✕</button>
+          </div>
+          <p style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:18px;">Firebase Console'da Firestore veritabanı güvenlik kurallarını güncellemeniz gerekiyor.</p>
+          <div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:16px;margin-bottom:18px;">
+            <h3 style="font-size:13px;color:var(--ac);font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">📋 Adımlar:</h3>
+            <ol style="color:var(--muted);font-size:13px;line-height:2;padding-left:20px;">
+              <li><a href="https://console.firebase.google.com/project/atto3takip/firestore" target="_blank" style="color:var(--ac);text-decoration:underline;">Firebase Console → Firestore Database</a> sayfasını açın</li>
+              <li>Üst menüden <strong>"Rules"</strong> sekmesine tıklayın</li>
+              <li>Mevcut kuralları silin ve aşağıdaki kodu yapıştırın</li>
+              <li><strong>"Publish"</strong> butonuna tıklayın</li>
+            </ol>
+          </div>
+          <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Firestore Rules</span>
+              <button onclick="navigator.clipboard.writeText(document.getElementById('rulesCode').textContent);this.textContent='✅ Kopyalandı!';setTimeout(()=>this.textContent='📋 Kopyala',2000)" style="background:var(--ac);color:#000;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;">📋 Kopyala</button>
             </div>
-            <p style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:18px;">
-              Firebase Console'da Firestore veritabanı güvenlik kurallarını güncellemeniz gerekiyor.
-              Aşağıdaki adımları takip edin:
-            </p>
-            <div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:16px;margin-bottom:18px;">
-              <h3 style="font-size:13px;color:var(--ac);font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">📋 Adımlar:</h3>
-              <ol style="color:var(--muted);font-size:13px;line-height:2;padding-left:20px;">
-                <li><a href="https://console.firebase.google.com/project/atto3takip/firestore" target="_blank" style="color:var(--ac);text-decoration:underline;">Firebase Console → Firestore Database</a> sayfasını açın</li>
-                <li>Üst menüden <strong>"Rules"</strong> (Kurallar) sekmesine tıklayın</li>
-                <li>Mevcut kuralları silin ve aşağıdaki kodu yapıştırın</li>
-                <li><strong>"Publish"</strong> (Yayınla) butonuna tıklayın</li>
-              </ol>
-            </div>
-            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:18px;position:relative;">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Firestore Rules</span>
-                <button onclick="navigator.clipboard.writeText(document.getElementById('rulesCode').textContent);this.textContent='✅ Kopyalandı!';setTimeout(()=>this.textContent='📋 Kopyala',2000)" style="background:var(--ac);color:#000;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;">📋 Kopyala</button>
-              </div>
-              <pre id="rulesCode" style="color:var(--green);font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;margin:0;">rules_version = '2';
+            <pre id="rulesCode" style="color:var(--green);font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;margin:0;">rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      
       match /vehicles/{vehicleId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
-        
         match /charges/{chargeId} {
           allow read, write: if request.auth != null && request.auth.uid == userId;
         }
       }
     }
-  }
-}</pre>
-            </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end;">
-              <button onclick="document.getElementById('firestoreRulesModal').style.display='none'" style="background:var(--panel2);border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:11px 22px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;cursor:pointer;">Kapat</button>
-              <a href="https://console.firebase.google.com/project/atto3takip/firestore/rules" target="_blank" style="background:linear-gradient(90deg,var(--ac),var(--accent));color:#000;border:none;border-radius:10px;padding:11px 22px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:800;cursor:pointer;text-decoration:none;text-align:center;display:flex;align-items:center;gap:6px;">
-                Firebase Console'a Git
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7zm-2 16H5V5h7V3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7H12z"/></svg>
-              </a>
-            </div>
-          </div>
-        </div>`;
-      document.body.insertAdjacentHTML('beforeend', modalHTML);
+    match /chargingStations/{stationId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
   }
+}</pre>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="document.getElementById('firestoreRulesModal').style.display='none'" style="background:var(--panel2);border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:11px 22px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;cursor:pointer;">Kapat</button>
+            <a href="https://console.firebase.google.com/project/atto3takip/firestore/rules" target="_blank" style="background:linear-gradient(90deg,var(--ac),var(--accent));color:#000;border:none;border-radius:10px;padding:11px 22px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:800;cursor:pointer;text-decoration:none;text-align:center;display:flex;align-items:center;gap:6px;">Firebase Console'a Git</a>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+  }
 
-  // INIT
   function buildYearOptions(selId){
     const sel=document.getElementById(selId);if(!sel) return;
     const cur=new Date().getFullYear();
@@ -715,7 +995,6 @@ service cloud.firestore {
   body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-height:100vh;overflow-x:hidden;}
   body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;background-image:radial-gradient(circle at 15% 0%,rgba(0,229,255,.08) 0%,transparent 40%),radial-gradient(circle at 85% 20%,rgba(59,130,246,.08) 0%,transparent 40%),radial-gradient(circle at 50% 100%,rgba(0,255,136,.05) 0%,transparent 50%);}
 
-  /* AUTH */
   #loginScreen,#registerScreen,#verifyScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;overflow-y:auto;padding:24px 0;}
   .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:34px 30px;width:90%;max-width:460px;display:flex;flex-direction:column;gap:17px;}
   .auth-logo{display:flex;align-items:center;gap:13px;}
@@ -742,7 +1021,6 @@ service cloud.firestore {
   .verify-icon{font-size:50px;text-align:center;}
   .verify-email{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 15px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ac);text-align:center;word-break:break-all;}
 
-  /* HEADER */
   header{background:#030712;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
   .header-top{display:flex;align-items:center;justify-content:space-between;padding:13px 26px;gap:12px;}
   .header-left{display:flex;align-items:center;gap:13px;flex-shrink:0;}
@@ -760,7 +1038,6 @@ service cloud.firestore {
   .vsel-btn:hover{border-color:var(--ac);color:var(--ac);}
   .vsel-btn.active{background:rgba(0,229,255,.1);border-color:var(--ac);color:var(--ac);}
 
-  /* MAIN */
   main{max-width:1200px;margin:0 auto;padding:28px 18px;}
   .icon-svg{width:16px;height:16px;vertical-align:middle;margin-right:7px;fill:currentColor;}
   .section-box{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,.2);padding:24px 28px;margin-bottom:22px;}
@@ -807,8 +1084,10 @@ service cloud.firestore {
   .table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;margin:0 -28px;padding:0 28px;}
   table{width:100%;border-collapse:collapse;}
   thead tr{background:rgba(0,0,0,.2);}
-  th{padding:14px 28px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:800;border-bottom:1px solid var(--border);}
-  td{padding:14px 28px;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04);}
+  thead{border-bottom:1px solid var(--border);}
+  th{padding:14px 28px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:800;border-bottom:none;}
+  td{padding:14px 28px;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.04);}
+  tbody tr:first-child td{border-top:none;}
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:rgba(255,255,255,.02);}
   .badge{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:5px;font-size:11px;font-weight:800;letter-spacing:.5px;font-family:'Outfit',sans-serif;}
@@ -867,6 +1146,48 @@ service cloud.firestore {
   .toast{position:fixed;bottom:22px;right:22px;background:var(--green);color:#022c22;padding:12px 20px;border-radius:10px;font-weight:800;font-size:14px;transform:translateY(100px);opacity:0;transition:all .4s ease-out;z-index:9999;display:flex;align-items:center;gap:8px;}
   .toast.show{transform:translateY(0);opacity:1;}
 
+  /* ===== STATIONS ===== */
+  #stationsMap{width:100%;height:380px;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:20px;}
+  .st-toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:center;}
+  .st-filter-btn,.st-sort-btn{background:var(--panel2);border:1px solid var(--border);color:var(--muted);padding:6px 13px;border-radius:7px;font-size:12px;font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;transition:all .2s;}
+  .st-filter-btn:hover,.st-sort-btn:hover{border-color:var(--ac);color:var(--ac);}
+  .st-filter-btn.active,.st-sort-btn.active{background:rgba(0,229,255,.12);border-color:var(--ac);color:var(--ac);}
+  .st-select{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:7px;font-size:12px;font-family:'Outfit',sans-serif;font-weight:600;}
+
+  .station-card{background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:16px 20px;display:flex;align-items:center;gap:16px;margin-bottom:9px;cursor:pointer;transition:all .2s;}
+  .station-card:hover{border-color:rgba(255,255,255,.18);transform:translateX(4px);}
+  .st-left{display:flex;align-items:center;gap:14px;flex:1;min-width:0;}
+  .st-brand-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+  .st-info{min-width:0;}
+  .st-name{font-size:14px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .st-address{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .st-connectors{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .st-badge{font-size:10px;padding:3px 7px;border-radius:4px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+  .st-badge.ac{background:rgba(0,229,255,.1);color:var(--ac);border:1px solid rgba(0,229,255,.25);}
+  .st-badge.dc{background:rgba(255,107,53,.1);color:var(--dc);border:1px solid rgba(255,107,53,.25);}
+  .st-right{text-align:right;flex-shrink:0;}
+  .st-distance{font-size:12px;font-weight:700;color:var(--ac);margin-bottom:6px;font-family:'JetBrains Mono',monospace;}
+  .st-prices{text-align:right;}
+  .st-price{font-size:11px;color:var(--muted);}
+  .st-price strong{color:var(--green);font-family:'JetBrains Mono',monospace;font-size:13px;}
+  .st-status{font-size:10px;font-weight:700;margin-top:6px;}
+  .st-status.st-online{color:var(--green);}
+  .st-status.st-offline{color:var(--danger);}
+
+  .sd-badge{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;}
+  .sd-badge.sd-online{border-color:rgba(0,255,136,.3);}
+  .sd-badge.sd-offline{border-color:rgba(239,68,68,.3);}
+  .sd-conn-card{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;flex:1;min-width:120px;}
+  .sd-conn-card.ac{border-color:rgba(0,229,255,.2);}
+  .sd-conn-card.dc{border-color:rgba(255,107,53,.2);}
+
+  .add-station-form{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+  .add-station-form .full-width{grid-column:span 2;}
+  .form-row2{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+  .checkbox-row{display:flex;gap:20px;align-items:center;}
+  .checkbox-row label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;font-family:'Outfit',sans-serif;font-weight:600;}
+  .checkbox-row input[type="checkbox"]{accent-color:var(--ac);width:16px;height:16px;}
+
   @media(max-width:960px){
     .stats{grid-template-columns:repeat(2,1fr);}
     .form-row,.form-row-km{grid-template-columns:1fr 1fr;}
@@ -880,6 +1201,8 @@ service cloud.firestore {
     th,td{padding:12px 16px;font-size:12px;}
     .header-top{padding:11px 16px;}
     #vehicleSelector{padding:7px 16px;}
+    .add-station-form{grid-template-columns:1fr;}
+    .add-station-form .full-width{grid-column:span 1;}
   }
   @media(max-width:600px){
     .header-nav .nav-tab span.nav-label{display:none;}
@@ -889,8 +1212,9 @@ service cloud.firestore {
     .stats{grid-template-columns:1fr;}
     .form-row,.form-row-km{grid-template-columns:1fr;}
     .btn-add{grid-column:span 1;}
-    .vehicle-card{flex-direction:column;align-items:flex-start;}
-    .vc-actions{width:100%;justify-content:space-between;}
+    .vehicle-card,.station-card{flex-direction:column;align-items:flex-start;}
+    .vc-actions,.st-right{width:100%;justify-content:space-between;margin-top:8px;}
+    .st-right{text-align:left;display:flex;gap:12px;align-items:center;}
     .auth-grid2{grid-template-columns:1fr;}
     .acc-edit-grid{grid-template-columns:1fr;}
     .add-vehicle-form{grid-template-columns:1fr;}
@@ -931,7 +1255,7 @@ service cloud.firestore {
       </div>
     </div>
     <div class="auth-field"><label>Şehir</label><input type="text" id="rCity" placeholder="Bursa"></div>
-    <div class="auth-section-label"> Hesap Bilgileri</div>
+    <div class="auth-section-label">🔐 Hesap Bilgileri</div>
     <div class="auth-field"><label>E-posta</label><input type="email" id="rEmail" placeholder="ornek@mail.com"></div>
     <div class="auth-grid2">
       <div class="auth-field"><label>Şifre</label><input type="password" id="rPassword" placeholder="Min. 6 karakter"></div>
@@ -953,7 +1277,7 @@ service cloud.firestore {
   <div class="auth-card" style="text-align:center;max-width:390px;gap:15px">
     <div class="verify-icon">📧</div>
     <div class="auth-title">E-postanı Onayla</div>
-    <p style="color:var(--muted);font-size:14px;line-height:1.7">Kayıt olduğun adrese doğrulama linki gönderdik. Gelen kutunu kontrol et ve linke tıkla.</p>
+    <p style="color:var(--muted);font-size:14px;line-height:1.7">Kayıt olduğun adrese doğrulama linki gönderdik.</p>
     <div class="verify-email" id="verifyEmailDisplay">—</div>
     <button class="auth-btn" onclick="checkVerification()">✓ Onayladım, Devam Et</button>
     <button class="auth-btn-ghost" onclick="resendVerification()">📨 Tekrar Gönder</button>
@@ -974,6 +1298,9 @@ service cloud.firestore {
       </button>
       <button class="nav-tab" id="navVehicles" onclick="showNavSection('vehiclesSection')">
         <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg><span class="nav-label">Araçlarım</span>
+      </button>
+      <button class="nav-tab" id="navStations" onclick="showNavSection('stationsSection')">
+        <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg><span class="nav-label">İstasyonlar</span>
       </button>
       <button class="nav-tab" id="navAccount" onclick="showNavSection('accountSection')">
         <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span class="nav-label">Hesabım</span>
@@ -996,9 +1323,7 @@ service cloud.firestore {
         <button onclick="nextMonth()">›</button>
       </div>
     </div>
-
     <div class="stats" id="stats"></div>
-
     <div class="section-box">
       <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>Araç Durumu & Yıllık Özet (<span id="yearTitle">—</span>)</h2>
       <div class="form-row-km">
@@ -1009,28 +1334,25 @@ service cloud.firestore {
         <button class="btn-add" onclick="saveKm()">KM KAYDET</button>
       </div>
     </div>
-
     <div class="section-box">
-      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm8 14H9v-6h2v6zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Aylık Şarj Dağılımı (kWh) <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">— bara tıklayarak aya geç</span></h2>
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm8 14H9v-6h2v6zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Aylık Şarj Dağılımı (kWh)</h2>
       <div class="bars" id="barsEl"></div>
       <div class="bar-legend">
         <div class="legend-item" style="color:var(--ac)"><div class="legend-dot" style="background:var(--ac)"></div>AC (Yavaş)</div>
         <div class="legend-item" style="color:var(--dc)"><div class="legend-dot" style="background:var(--dc)"></div>DC (Hızlı)</div>
       </div>
     </div>
-
     <div class="section-box">
       <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Yeni Şarj Ekle</h2>
       <div class="form-row">
         <div class="field"><label>Tarih</label><input type="date" id="fDate"></div>
         <div class="field"><label>Şarj Tipi</label><select id="fType"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select></div>
         <div class="field"><label>Enerji (kWh)</label><input type="number" id="fKwh" placeholder="0.00" step="0.01" min="0"></div>
-        <div class="field"><label>Birim Fiyat (₺/kWh)</label><input type="number" id="fPrice" placeholder="0.00" step="0.01" min="0"></div>
-        <div class="field"><label>Not (Opsiyonel)</label><input type="text" id="fNote" placeholder="Ev, ZES, Eşarj…"></div>
+        <div class="field"><label>Birim Fiyat (/kWh)</label><input type="number" id="fPrice" placeholder="0.00" step="0.01" min="0"></div>
+        <div class="field"><label>Not</label><input type="text" id="fNote" placeholder="Ev, ZES, Eşarj…"></div>
         <button class="btn-add" onclick="addCharge()">KAYDET</button>
       </div>
     </div>
-
     <div class="section-box table-section">
       <div class="table-header">
         <h2 style="margin:0">Şarj Kayıtları</h2>
@@ -1074,6 +1396,52 @@ service cloud.firestore {
     </div>
   </div>
 
+  <div id="stationsSection" style="display:none">
+    <div class="section-box" style="padding:0;overflow:hidden;">
+      <div id="stationsMap"></div>
+    </div>
+    <div class="section-box">
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>Şarj İstasyonları</h2>
+      <div class="st-toolbar">
+        <select class="st-select" id="stFilterBrand" onchange="setStationFilter(this.value,this)">
+          <option value="all">Tüm Markalar</option>
+        </select>
+        <button class="st-sort-btn active" onclick="setStationSort('distance',this)"> Mesafe</button>
+        <button class="st-sort-btn" onclick="setStationSort('acPrice',this)">💰 AC Fiyat</button>
+        <button class="st-sort-btn" onclick="setStationSort('dcPrice',this)">⚡ DC Fiyat</button>
+        <button class="st-sort-btn" onclick="setStationSort('brand',this)">🏷️ Marka</button>
+      </div>
+      <div id="stationsList"></div>
+    </div>
+    <div class="section-box">
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Yeni İstasyon Ekle</h2>
+      <div class="add-station-form">
+        <div class="field"><label>İstasyon Adı *</label><input type="text" id="stName" placeholder="Örn: Eşarj - Kadıköy"></div>
+        <div class="field"><label>Marka *</label><select id="stBrand"><option value="">Marka seçin…</option></select></div>
+        <div class="field full-width"><label>Adres</label><input type="text" id="stAddress" placeholder="Cadde, Mahalle, İlçe/İl"></div>
+        <div class="field"><label>Enlem (Lat) *</label><input type="number" id="stLat" placeholder="41.0082" step="0.000001"></div>
+        <div class="field"><label>Boylam (Lng) *</label><input type="number" id="stLng" placeholder="28.9784" step="0.000001"></div>
+        <div class="field"><button class="btn-add" onclick="pickLocation()" style="width:100%;justify-content:center;">📍 Konumumu Al</button></div>
+        <div class="field"></div>
+        <div class="form-row2 full-width">
+          <div class="field"><label>AC Fiyat (₺/kWh)</label><input type="number" id="stAcPrice" placeholder="8.50" step="0.01"></div>
+          <div class="field"><label>DC Fiyat (₺/kWh)</label><input type="number" id="stDcPrice" placeholder="12.90" step="0.01"></div>
+        </div>
+        <div class="form-row2 full-width">
+          <div class="field"><label>AC Güç (kW)</label><input type="number" id="stAcPower" placeholder="22" value="22"></div>
+          <div class="field"><label>DC Güç (kW)</label><input type="number" id="stDcPower" placeholder="150" value="150"></div>
+        </div>
+        <div class="checkbox-row full-width">
+          <label><input type="checkbox" id="stHasAC" checked> AC Şarj Var</label>
+          <label><input type="checkbox" id="stHasDC" checked> DC Şarj Var</label>
+        </div>
+        <div class="full-width">
+          <button class="btn-add" onclick="addStation()" style="width:100%;justify-content:center;"> İSTASYON EKLE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="accountSection" style="display:none">
     <div class="acc-grid">
       <div class="acc-info-card">
@@ -1102,7 +1470,6 @@ service cloud.firestore {
         </div>
       </div>
     </div>
-
     <div class="section-box" style="display:flex;flex-direction:column;gap:18px">
       <div>
         <h3 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:11px">Oturum</h3>
@@ -1113,7 +1480,7 @@ service cloud.firestore {
       </div>
       <div class="danger-zone">
         <h3>⚠️ Tehlikeli Bölge</h3>
-        <p>Hesabınızı sildiğinizde <strong>tüm araçlarınız ve şarj verileriniz</strong> kalıcı olarak silinir. Bu işlem geri alınamaz.</p>
+        <p>Hesabınızı sildiğinizde <strong>tüm araçlarınız ve şarj verileriniz</strong> kalıcı olarak silinir.</p>
         <button class="btn-delete-account" onclick="deleteAccount()">️ Hesabımı Kalıcı Olarak Sil</button>
       </div>
     </div>
