@@ -10,8 +10,13 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc, getDoc, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy,
+           serverTimestamp, setDoc, getDoc, getDocs, updateDoc }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+           sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged,
+           signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDFJcSee_FgEd60iQSf5wGCjU9GxrGG41M",
@@ -22,31 +27,65 @@
     appId: "1:805798658630:web:63cfa192bdd36279c88047"
   };
 
-  const app = initializeApp(firebaseConfig);
-  const db  = getFirestore(app);
+  const app  = initializeApp(firebaseConfig);
+  const db   = getFirestore(app);
   const auth = getAuth(app);
 
-  const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
+                     'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
-  let currentUser      = null;
-  let userProfile      = null;
-  let vehicles         = [];
+  // Türkiye'deki elektrikli araçlar
+  const TR_EVS = {
+    'Togg':          ['T10X','T10F'],
+    'BYD':           ['Atto 3','Atto 2','Seal','Dolphin','Han','Tang EV','Seagull','Sea Lion 6'],
+    'Tesla':         ['Model 3','Model Y','Model S','Model X'],
+    'Volkswagen':    ['ID.3','ID.4','ID.5','ID.7','ID. Buzz'],
+    'BMW':           ['i3','i4','i5','i7','iX','iX1','iX3'],
+    'Mercedes-Benz': ['EQA','EQB','EQC','EQE','EQE SUV','EQS','EQS SUV'],
+    'Audi':          ['Q4 e-tron','Q6 e-tron','e-tron GT','RS e-tron GT','A6 e-tron'],
+    'Porsche':       ['Taycan','Taycan Cross Turismo','Taycan Sport Turismo','Macan Electric'],
+    'Hyundai':       ['Ioniq 5','Ioniq 6','Ioniq 9','Kona Electric'],
+    'Kia':           ['EV3','EV6','EV9','Niro EV'],
+    'Volvo':         ['EX30','EX40','XC40 Recharge','C40 Recharge','EX90'],
+    'Renault':       ['Zoe','Megane E-Tech','Scenic E-Tech','5 E-Tech'],
+    'Peugeot':       ['e-208','e-2008','e-308','e-3008'],
+    'Opel':          ['Corsa Electric','Mokka Electric','Astra Electric','Grandland Electric'],
+    'Fiat':          ['500e','Grande Panda Electric'],
+    'MINI':          ['Cooper SE','Aceman','Countryman E'],
+    'Skoda':         ['Enyaq','Enyaq Coupe','Elroq'],
+    'CUPRA':         ['Born','Tavascan'],
+    'MG':            ['MG4','MG5','ZS EV'],
+    'Nio':           ['ET5','ET5 Touring','ES6','EL6','ET7'],
+    'Zeekr':         ['001','007','X'],
+    'Dacia':         ['Spring'],
+    'Ford':          ['Mustang Mach-E'],
+    'Honda':         ['e:Ny1'],
+    'Nissan':        ['Leaf','Ariya'],
+    'Lexus':         ['UX 300e','RZ 450e'],
+    'Toyota':        ['bZ4X'],
+    'Leapmotor':     ['C10','B10'],
+    'OMODA':         ['E5'],
+  };
+
+  let currentUser       = null;
+  let userProfile       = null;
+  let vehicles          = [];
   let selectedVehicleId = null;
-  let selectedVehicle  = null;
-  let data             = [];
-  let filter           = 'all';
-  let viewYear         = new Date().getFullYear();
-  let viewMonth        = new Date().getMonth();
-  let unsubCharges     = null;
-  let unsubVehicles    = null;
+  let selectedVehicle   = null;
+  let data              = [];
+  let filter            = 'all';
+  let viewYear          = new Date().getFullYear();
+  let viewMonth         = new Date().getMonth();
+  let unsubCharges      = null;
+  let unsubVehicles     = null;
 
-  // ============================================================
-  // AUTH STATE
-  // ============================================================
+  // AUTH
   onAuthStateChanged(auth, async user => {
     if (user) {
       currentUser = user;
       if (!user.emailVerified) {
+        const ed=document.getElementById('verifyEmailDisplay');
+        if(ed) ed.textContent=user.email;
         showScreen('verifyScreen');
       } else {
         await loadUserProfile();
@@ -54,216 +93,188 @@
         initApp();
       }
     } else {
-      currentUser = null; userProfile = null; vehicles = []; data = [];
-      if (unsubCharges)  { unsubCharges();  unsubCharges  = null; }
-      if (unsubVehicles) { unsubVehicles(); unsubVehicles = null; }
+      currentUser=null; userProfile=null; vehicles=[]; data=[];
+      if(unsubCharges){unsubCharges();unsubCharges=null;}
+      if(unsubVehicles){unsubVehicles();unsubVehicles=null;}
       showScreen('loginScreen');
     }
   });
 
   function showScreen(id) {
-    ['loginScreen','registerScreen','verifyScreen','appContent'].forEach(s => {
-      const el = document.getElementById(s);
-      if (el) el.style.display = 'none';
+    ['loginScreen','registerScreen','verifyScreen','appContent'].forEach(s=>{
+      const el=document.getElementById(s); if(el) el.style.display='none';
     });
-    const el = document.getElementById(id);
-    if (el) el.style.display = (id === 'appContent') ? 'block' : 'flex';
+    const el=document.getElementById(id);
+    if(el) el.style.display=(id==='appContent')?'block':'flex';
   }
 
-  // ============================================================
   // LOGIN
-  // ============================================================
   window.login = async function() {
-    const email = document.getElementById('lEmail').value.trim();
-    const pw    = document.getElementById('lPassword').value;
+    const email=document.getElementById('lEmail').value.trim();
+    const pw=document.getElementById('lPassword').value;
     clearErr('loginError');
-    if (!email || !pw) { showErr('loginError','E-posta ve şifre gerekli.'); return; }
-    const btn = document.getElementById('loginBtn');
-    btn.disabled = true; btn.textContent = 'Giriş yapılıyor…';
-    try {
-      await signInWithEmailAndPassword(auth, email, pw);
-    } catch(e) {
-      showErr('loginError', errMsg(e.code));
-      btn.disabled = false; btn.textContent = 'Giriş Yap';
-    }
+    if(!email||!pw){showErr('loginError','E-posta ve şifre gerekli.');return;}
+    const btn=document.getElementById('loginBtn');
+    btn.disabled=true; btn.textContent='Giriş yapılıyor…';
+    try{await signInWithEmailAndPassword(auth,email,pw);}
+    catch(e){showErr('loginError',errMsg(e.code));btn.disabled=false;btn.textContent='Giriş Yap';}
   };
-
   window.forgotPassword = async function() {
-    const email = document.getElementById('lEmail').value.trim();
-    if (!email) { showErr('loginError','Şifre sıfırlama için önce e-posta girin.'); return; }
-    try {
-      await sendPasswordResetEmail(auth, email);
-      showErr('loginError','✅ Şifre sıfırlama e-postası gönderildi.', true);
-    } catch(e) { showErr('loginError', errMsg(e.code)); }
+    const email=document.getElementById('lEmail').value.trim();
+    if(!email){showErr('loginError','Şifre sıfırlama için e-posta girin.');return;}
+    try{await sendPasswordResetEmail(auth,email);showErr('loginError','✅ Şifre sıfırlama e-postası gönderildi.',true);}
+    catch(e){showErr('loginError',errMsg(e.code));}
   };
+  window.goToRegister = function(){showScreen('registerScreen');fillBrandSelect('rCarMake','rCarModel');};
+  window.goToLogin    = function(){showScreen('loginScreen');};
 
-  window.goToRegister = function() { showScreen('registerScreen'); loadMakesForRegister(); };
-  window.goToLogin    = function() { showScreen('loginScreen'); };
-
-  // ============================================================
   // REGISTER
-  // ============================================================
   window.register = async function() {
-    const fn   = document.getElementById('rFirstName').value.trim();
-    const ln   = document.getElementById('rLastName').value.trim();
-    const bd   = document.getElementById('rBirthDate').value;
-    const city = document.getElementById('rCity').value.trim();
-    const gen  = document.getElementById('rGender').value;
-    const em   = document.getElementById('rEmail').value.trim();
-    const pw   = document.getElementById('rPassword').value;
-    const pw2  = document.getElementById('rPassword2').value;
-    const mk   = document.getElementById('rCarMake').value.trim();
-    const mo   = document.getElementById('rCarModel').value.trim();
-    const yr   = document.getElementById('rCarYear').value;
+    const fn=document.getElementById('rFirstName').value.trim();
+    const ln=document.getElementById('rLastName').value.trim();
+    const bd=document.getElementById('rBirthDate').value;
+    const ct=document.getElementById('rCity').value.trim();
+    const gn=document.getElementById('rGender').value;
+    const em=document.getElementById('rEmail').value.trim();
+    const pw=document.getElementById('rPassword').value;
+    const pw2=document.getElementById('rPassword2').value;
+    const mk=document.getElementById('rCarMake').value;
+    const mo=document.getElementById('rCarModel').value;
+    const yr=document.getElementById('rCarYear').value;
     clearErr('registerError');
-    if (!fn||!ln||!bd||!city||!gen||!em||!pw||!mk||!mo||!yr) { showErr('registerError','Lütfen tüm alanları doldurun.'); return; }
-    if (pw !== pw2) { showErr('registerError','Şifreler eşleşmiyor.'); return; }
-    if (pw.length < 6) { showErr('registerError','Şifre en az 6 karakter olmalı.'); return; }
-    const btn = document.getElementById('registerBtn');
-    btn.disabled = true; btn.textContent = 'Kayıt yapılıyor…';
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, em, pw);
-      const uid  = cred.user.uid;
-      await setDoc(doc(db,'users',uid), { firstName:fn, lastName:ln, birthDate:bd, city, gender:gen, email:em, createdAt:serverTimestamp() });
-      const vRef = doc(collection(db,'users',uid,'vehicles'));
-      await setDoc(vRef, { make:mk, model:mo, year:parseInt(yr), isPrimary:true, km:0, addedAt:serverTimestamp() });
+    if(!fn||!ln||!bd||!ct||!gn||!em||!pw||!mk||!mo||!yr){showErr('registerError','Lütfen tüm alanları doldurun.');return;}
+    if(pw!==pw2){showErr('registerError','Şifreler eşleşmiyor.');return;}
+    if(pw.length<6){showErr('registerError','Şifre en az 6 karakter olmalı.');return;}
+    const btn=document.getElementById('registerBtn');
+    btn.disabled=true; btn.textContent='Kayıt yapılıyor…';
+    try{
+      const cred=await createUserWithEmailAndPassword(auth,em,pw);
+      const uid=cred.user.uid;
+      await setDoc(doc(db,'users',uid),{firstName:fn,lastName:ln,birthDate:bd,city:ct,gender:gn,email:em,createdAt:serverTimestamp()});
+      const vRef=doc(collection(db,'users',uid,'vehicles'));
+      await setDoc(vRef,{make:mk,model:mo,year:parseInt(yr),isPrimary:true,km:0,addedAt:serverTimestamp()});
       await sendEmailVerification(cred.user);
+      const ed=document.getElementById('verifyEmailDisplay');
+      if(ed) ed.textContent=em;
       showScreen('verifyScreen');
-    } catch(e) {
-      showErr('registerError', errMsg(e.code));
-      btn.disabled = false; btn.textContent = 'Kayıt Ol';
-    }
+    }catch(e){showErr('registerError',errMsg(e.code));btn.disabled=false;btn.textContent='Kayıt Ol';}
   };
 
-  // ============================================================
-  // EMAIL VERIFY
-  // ============================================================
+  // VERIFY
   window.checkVerification = async function() {
     await auth.currentUser.reload();
-    if (auth.currentUser.emailVerified) {
-      currentUser = auth.currentUser;
+    if(auth.currentUser.emailVerified){
+      currentUser=auth.currentUser;
       await loadUserProfile();
       showScreen('appContent');
       initApp();
-    } else { alert('E-posta henüz doğrulanmadı. Lütfen gelen kutunuzu kontrol edin.'); }
+    }else{alert('E-posta henüz doğrulanmadı. Lütfen gelen kutunuzu kontrol edin.');}
   };
-
   window.resendVerification = async function() {
-    try { await sendEmailVerification(auth.currentUser); alert('✅ Doğrulama e-postası tekrar gönderildi.'); }
-    catch(e) { alert('Hata: '+e.message); }
+    try{await sendEmailVerification(auth.currentUser);alert('✅ Doğrulama e-postası tekrar gönderildi.');}
+    catch(e){alert('Hata: '+e.message);}
   };
-
   window.logout = async function() {
-    if (unsubCharges)  { unsubCharges();  unsubCharges  = null; }
-    if (unsubVehicles) { unsubVehicles(); unsubVehicles = null; }
+    if(unsubCharges){unsubCharges();unsubCharges=null;}
+    if(unsubVehicles){unsubVehicles();unsubVehicles=null;}
     await signOut(auth);
   };
 
-  // ============================================================
-  // USER PROFILE
-  // ============================================================
+  // PROFILE
   async function loadUserProfile() {
-    const snap = await getDoc(doc(db,'users',currentUser.uid));
-    if (snap.exists()) userProfile = snap.data();
+    const snap=await getDoc(doc(db,'users',currentUser.uid));
+    if(snap.exists()) userProfile=snap.data();
   }
-
   function renderAccountSection() {
-    if (!userProfile) return;
-    document.getElementById('accName').textContent   = userProfile.firstName+' '+userProfile.lastName;
-    document.getElementById('accEmail').textContent  = currentUser.email;
-    document.getElementById('accBirth').textContent  = userProfile.birthDate || '—';
-    document.getElementById('accCity').textContent   = userProfile.city || '—';
-    const gmap = {male:'Erkek',female:'Kadın',other:'Diğer'};
-    document.getElementById('accGender').textContent = gmap[userProfile.gender] || '—';
-    document.getElementById('editFirstName').value   = userProfile.firstName || '';
-    document.getElementById('editLastName').value    = userProfile.lastName  || '';
-    document.getElementById('editBirthDate').value   = userProfile.birthDate || '';
-    document.getElementById('editCity').value        = userProfile.city      || '';
-    document.getElementById('editGender').value      = userProfile.gender    || '';
+    if(!userProfile) return;
+    const gmap={male:'Erkek',female:'Kadın',other:'Diğer'};
+    document.getElementById('accName').textContent=userProfile.firstName+' '+userProfile.lastName;
+    document.getElementById('accEmail').textContent=currentUser.email;
+    document.getElementById('accBirth').textContent=userProfile.birthDate||'—';
+    document.getElementById('accCity').textContent=userProfile.city||'—';
+    document.getElementById('accGender').textContent=gmap[userProfile.gender]||'—';
+    document.getElementById('editFirstName').value=userProfile.firstName||'';
+    document.getElementById('editLastName').value=userProfile.lastName||'';
+    document.getElementById('editBirthDate').value=userProfile.birthDate||'';
+    document.getElementById('editCity').value=userProfile.city||'';
+    document.getElementById('editGender').value=userProfile.gender||'';
   }
-
   window.saveProfile = async function() {
-    const fn  = document.getElementById('editFirstName').value.trim();
-    const ln  = document.getElementById('editLastName').value.trim();
-    const bd  = document.getElementById('editBirthDate').value;
-    const ct  = document.getElementById('editCity').value.trim();
-    const gn  = document.getElementById('editGender').value;
-    if (!fn||!ln) { alert('Ad ve soyad gerekli.'); return; }
-    try {
-      await updateDoc(doc(db,'users',currentUser.uid), { firstName:fn, lastName:ln, birthDate:bd, city:ct, gender:gn });
-      userProfile = { ...userProfile, firstName:fn, lastName:ln, birthDate:bd, city:ct, gender:gn };
-      renderAccountSection();
-      showToast('Profil güncellendi!');
-    } catch(e) { alert('Hata: '+e.message); }
+    const fn=document.getElementById('editFirstName').value.trim();
+    const ln=document.getElementById('editLastName').value.trim();
+    const bd=document.getElementById('editBirthDate').value;
+    const ct=document.getElementById('editCity').value.trim();
+    const gn=document.getElementById('editGender').value;
+    if(!fn||!ln){alert('Ad ve soyad gerekli.');return;}
+    try{
+      await updateDoc(doc(db,'users',currentUser.uid),{firstName:fn,lastName:ln,birthDate:bd,city:ct,gender:gn});
+      userProfile={...userProfile,firstName:fn,lastName:ln,birthDate:bd,city:ct,gender:gn};
+      renderAccountSection(); showToast('Profil güncellendi!');
+    }catch(e){alert('Hata: '+e.message);}
   };
-
   window.deleteAccount = async function() {
-    if (!confirm('Hesabınızı kalıcı olarak silmek istediğinizden emin misiniz?\n\nTüm verileriniz ve araçlarınız silinecek. Bu işlem GERİ ALINAMAZ!')) return;
-    const pw = prompt('Güvenlik için şifrenizi girin:');
-    if (!pw) return;
-    try {
-      const cred = EmailAuthProvider.credential(currentUser.email, pw);
-      await reauthenticateWithCredential(currentUser, cred);
-      const vSnap = await getDocs(collection(db,'users',currentUser.uid,'vehicles'));
-      for (const v of vSnap.docs) {
-        const cSnap = await getDocs(collection(db,'users',currentUser.uid,'vehicles',v.id,'charges'));
-        for (const c of cSnap.docs) await deleteDoc(c.ref);
+    if(!confirm('Hesabınızı kalıcı olarak silmek istediğinizden emin misiniz?\nTüm verileriniz silinecek. GERİ ALINAMAZ!')) return;
+    const pw=prompt('Güvenlik için şifrenizi girin:');
+    if(!pw) return;
+    try{
+      const cred=EmailAuthProvider.credential(currentUser.email,pw);
+      await reauthenticateWithCredential(currentUser,cred);
+      const vSnap=await getDocs(collection(db,'users',currentUser.uid,'vehicles'));
+      for(const v of vSnap.docs){
+        const cSnap=await getDocs(collection(db,'users',currentUser.uid,'vehicles',v.id,'charges'));
+        for(const c of cSnap.docs) await deleteDoc(c.ref);
         await deleteDoc(v.ref);
       }
       await deleteDoc(doc(db,'users',currentUser.uid));
       await deleteUser(currentUser);
-    } catch(e) { alert('Hata: '+e.message); }
+    }catch(e){alert('Hata: '+e.message);}
   };
 
-  // ============================================================
   // VEHICLES
-  // ============================================================
   function listenVehicles() {
-    if (unsubVehicles) unsubVehicles();
-    const ref = collection(db,'users',currentUser.uid,'vehicles');
-    unsubVehicles = onSnapshot(ref, snap => {
-      vehicles = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-      vehicles.sort((a,b) => (b.isPrimary?1:0)-(a.isPrimary?1:0));
-      if (!selectedVehicleId && vehicles.length > 0) {
-        selectedVehicleId = (vehicles.find(v=>v.isPrimary)||vehicles[0]).id;
-      }
-      selectedVehicle = vehicles.find(v=>v.id===selectedVehicleId)||vehicles[0]||null;
+    if(unsubVehicles) unsubVehicles();
+    const ref=collection(db,'users',currentUser.uid,'vehicles');
+    unsubVehicles=onSnapshot(ref,snap=>{
+      vehicles=snap.docs.map(d=>({id:d.id,...d.data()}));
+      vehicles.sort((a,b)=>(b.isPrimary?1:0)-(a.isPrimary?1:0));
+      if(!selectedVehicleId&&vehicles.length>0)
+        selectedVehicleId=(vehicles.find(v=>v.isPrimary)||vehicles[0]).id;
+      selectedVehicle=vehicles.find(v=>v.id===selectedVehicleId)||vehicles[0]||null;
       renderVehiclesSection();
       renderVehicleSelector();
       updateHeaderTitle();
       listenCharges();
-    });
+    },err=>console.error('Vehicles:',err.code));
   }
 
   function renderVehicleSelector() {
-    const el = document.getElementById('vehicleSelector');
-    if (!el) return;
-    if (vehicles.length <= 1) { el.style.display='none'; return; }
+    const el=document.getElementById('vehicleSelector');
+    if(!el) return;
+    if(vehicles.length<=1){el.style.display='none';return;}
     el.style.display='flex';
-    el.innerHTML = vehicles.map(v=>`
+    el.innerHTML=vehicles.map(v=>`
       <button class="vsel-btn ${v.id===selectedVehicleId?'active':''}" onclick="selectVehicle('${v.id}')">
-        ${v.make} ${v.model} <span style="opacity:.6">(${v.year})</span>
+        ${v.make} ${v.model} <span style="opacity:.55">(${v.year})</span>
       </button>`).join('');
   }
 
   function renderVehiclesSection() {
-    const el = document.getElementById('vehiclesList');
-    if (!el) return;
-    if (!vehicles.length) { el.innerHTML='<p style="color:var(--muted);text-align:center;padding:24px">Araç bulunamadı.</p>'; return; }
-    el.innerHTML = vehicles.map(v=>`
+    const el=document.getElementById('vehiclesList');
+    if(!el) return;
+    if(!vehicles.length){el.innerHTML='<p style="color:var(--muted);text-align:center;padding:32px">Araç bulunamadı.</p>';return;}
+    el.innerHTML=vehicles.map(v=>`
       <div class="vehicle-card ${v.id===selectedVehicleId?'vc-active':''}">
         <div class="vc-icon">🚗</div>
         <div class="vc-info">
           <div class="vc-name">${v.make} ${v.model}</div>
-          <div class="vc-sub">${v.year} yılı · ${v.km||0} km</div>
-          ${v.isPrimary?'<span class="primary-badge">Birincil Araç</span>':''}
+          <div class="vc-sub">${v.year} · ${v.km||0} km</div>
+          ${v.isPrimary?'<span class="primary-badge">Birincil</span>':''}
         </div>
         <div class="vc-actions">
-          <button class="btn-sel-v ${v.id===selectedVehicleId?'btn-sel-active':''}"
-            onclick="selectVehicleAndGo('${v.id}')">
+          <button class="btn-sel-v ${v.id===selectedVehicleId?'btn-sel-active':''}" onclick="selectVehicleAndGo('${v.id}')">
             ${v.id===selectedVehicleId?'✓ Seçili':'Seç & Git'}
           </button>
-          <button class="del-btn" onclick="deleteVehicle('${v.id}')" title="Aracı sil">
+          <button class="del-btn" onclick="deleteVehicle('${v.id}')" title="Sil">
             <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
           </button>
         </div>
@@ -271,221 +282,240 @@
   }
 
   window.selectVehicle = function(vid) {
-    selectedVehicleId = vid;
-    selectedVehicle   = vehicles.find(v=>v.id===vid)||null;
-    if (unsubCharges) { unsubCharges(); unsubCharges=null; }
-    data = [];
-    listenCharges();
-    renderVehicleSelector();
-    renderVehiclesSection();
-    updateHeaderTitle();
-    renderAll();
+    selectedVehicleId=vid; selectedVehicle=vehicles.find(v=>v.id===vid)||null;
+    if(unsubCharges){unsubCharges();unsubCharges=null;}
+    data=[]; listenCharges();
+    renderVehicleSelector(); renderVehiclesSection(); updateHeaderTitle(); renderAll();
   };
-
-  window.selectVehicleAndGo = function(vid) {
-    selectVehicle(vid);
-    showNavSection('chargingSection');
-  };
+  window.selectVehicleAndGo = function(vid){selectVehicle(vid);showNavSection('chargingSection');};
 
   window.deleteVehicle = async function(vid) {
-    if (vehicles.length <= 1) { alert('Son aracınızı silemezsiniz. Önce yeni araç ekleyin.'); return; }
-    const v = vehicles.find(x=>x.id===vid);
-    if (!confirm(`"${v?.make} ${v?.model}" aracını ve tüm şarj verilerini silmek istiyor musunuz?`)) return;
-    try {
-      const cSnap = await getDocs(collection(db,'users',currentUser.uid,'vehicles',vid,'charges'));
-      for (const c of cSnap.docs) await deleteDoc(c.ref);
+    if(vehicles.length<=1){alert('Son aracınızı silemezsiniz.');return;}
+    const v=vehicles.find(x=>x.id===vid);
+    if(!confirm(`"${v?.make} ${v?.model}" aracını ve tüm şarj verilerini silmek istiyor musunuz?`)) return;
+    try{
+      const cSnap=await getDocs(collection(db,'users',currentUser.uid,'vehicles',vid,'charges'));
+      for(const c of cSnap.docs) await deleteDoc(c.ref);
       await deleteDoc(doc(db,'users',currentUser.uid,'vehicles',vid));
-      if (selectedVehicleId===vid) {
-        const other = vehicles.find(v=>v.id!==vid);
-        selectedVehicleId = other?.id||null;
-        selectedVehicle   = other||null;
+      if(selectedVehicleId===vid){
+        const other=vehicles.find(v=>v.id!==vid);
+        selectedVehicleId=other?.id||null; selectedVehicle=other||null;
       }
       showToast('Araç silindi!');
-    } catch(e) { alert('Hata: '+e.message); }
+    }catch(e){alert('Hata: '+e.message);}
   };
 
   window.addVehicle = async function() {
-    const mk = document.getElementById('avMake').value.trim();
-    const mo = document.getElementById('avModel').value.trim();
-    const yr = document.getElementById('avYear').value;
-    if (!mk||!mo||!yr) { alert('Lütfen marka, model ve yıl seçin.'); return; }
-    try {
+    const mk=document.getElementById('avMake').value;
+    const mo=document.getElementById('avModel').value;
+    const yr=document.getElementById('avYear').value;
+    if(!mk||!mo||!yr){alert('Lütfen marka, model ve yıl seçin.');return;}
+    try{
       await addDoc(collection(db,'users',currentUser.uid,'vehicles'),
-        { make:mk, model:mo, year:parseInt(yr), isPrimary:false, km:0, addedAt:serverTimestamp() });
-      document.getElementById('avMake').value='';
-      document.getElementById('avModel').value='';
+        {make:mk,model:mo,year:parseInt(yr),isPrimary:false,km:0,addedAt:serverTimestamp()});
+      document.getElementById('avMake').selectedIndex=0;
+      document.getElementById('avModel').innerHTML='<option value="">Model seçin…</option>';
       showToast('Araç eklendi!');
-    } catch(e) { alert('Hata: '+e.message); }
+    }catch(e){alert('Yetersiz izin! Firebase Console → Firestore → Rules bölümüne güvenlik kurallarını yapıştırın.\n\nHata: '+e.message);}
   };
 
   function updateHeaderTitle() {
-    const v = vehicles.find(x=>x.id===selectedVehicleId);
-    const t = document.getElementById('headerTitle');
-    if (t) t.textContent = v ? v.make+' '+v.model : 'EV Şarj Takip';
+    const v=vehicles.find(x=>x.id===selectedVehicleId);
+    const t=document.getElementById('headerTitle');
+    if(t) t.textContent=v?v.make+' '+v.model:'EV Şarj Takip';
   }
 
-  // ============================================================
   // CHARGES
-  // ============================================================
   function listenCharges() {
-    if (!selectedVehicleId||!currentUser) return;
-    if (unsubCharges) unsubCharges();
-    const ref = collection(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges');
-    const q   = query(ref, orderBy('date','desc'));
-    unsubCharges = onSnapshot(q, snap => {
-      data = snap.docs.map(d=>({ firebaseId:d.id, ...d.data() }));
+    if(!selectedVehicleId||!currentUser) return;
+    if(unsubCharges) unsubCharges();
+    const ref=collection(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges');
+    const q=query(ref,orderBy('date','desc'));
+    unsubCharges=onSnapshot(q,snap=>{
+      data=snap.docs.map(d=>({firebaseId:d.id,...d.data()}));
       renderAll();
-    }, err => console.error('Charges error:',err));
+    },err=>console.error('Charges:',err));
   }
 
   window.addCharge = async function() {
-    if (!selectedVehicleId) { alert('Önce bir araç seçin.'); return; }
-    const date  = document.getElementById('fDate').value;
-    const type  = document.getElementById('fType').value;
-    const kwh   = parseFloat(document.getElementById('fKwh').value);
-    const price = parseFloat(document.getElementById('fPrice').value);
-    const note  = document.getElementById('fNote').value.trim();
-    if (!date||isNaN(kwh)||kwh<=0||isNaN(price)||price<0) {
-      alert('Lütfen tarih, enerji ve birim fiyat alanlarını doğru doldurun.'); return;
-    }
-    try {
+    if(!selectedVehicleId){alert('Önce bir araç seçin.');return;}
+    const date=document.getElementById('fDate').value;
+    const type=document.getElementById('fType').value;
+    const kwh=parseFloat(document.getElementById('fKwh').value);
+    const price=parseFloat(document.getElementById('fPrice').value);
+    const note=document.getElementById('fNote').value.trim();
+    if(!date||isNaN(kwh)||kwh<=0||isNaN(price)||price<0){alert('Tarih, enerji ve birim fiyat alanlarını doldurun.');return;}
+    try{
       await addDoc(collection(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges'),
-        { date, type, kwh, price, note, createdAt:serverTimestamp() });
+        {date,type,kwh,price,note,createdAt:serverTimestamp()});
       document.getElementById('fKwh').value='';
       document.getElementById('fNote').value='';
       showToast('Kayıt eklendi!');
-    } catch(e) { alert('Hata: '+e.message); }
+    }catch(e){alert('Hata: '+e.message);}
   };
 
   window.deleteCharge = async function(fid) {
-    if (!confirm('Bu kaydı silmek istiyor musunuz?')) return;
-    try {
-      await deleteDoc(doc(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges',fid));
-    } catch(e) { alert('Hata: '+e.message); }
+    if(!confirm('Bu kaydı silmek istiyor musunuz?')) return;
+    try{await deleteDoc(doc(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges',fid));}
+    catch(e){alert('Hata: '+e.message);}
   };
 
   window.saveKm = async function() {
-    const km = parseFloat(document.getElementById('fCurrentKm').value);
-    if (isNaN(km)||km<0) { alert('Geçerli kilometre girin.'); return; }
-    try {
-      await updateDoc(doc(db,'users',currentUser.uid,'vehicles',selectedVehicleId), { km });
-      vehicles = vehicles.map(v=>v.id===selectedVehicleId?{...v,km}:v);
-      selectedVehicle = vehicles.find(v=>v.id===selectedVehicleId)||null;
-      renderGlobal();
-      renderVehiclesSection();
-      showToast('Kilometre güncellendi!');
-    } catch(e) { alert('Hata: '+e.message); }
+    const km=parseFloat(document.getElementById('fCurrentKm').value);
+    if(isNaN(km)||km<0){alert('Geçerli kilometre girin.');return;}
+    try{
+      await updateDoc(doc(db,'users',currentUser.uid,'vehicles',selectedVehicleId),{km});
+      vehicles=vehicles.map(v=>v.id===selectedVehicleId?{...v,km}:v);
+      selectedVehicle=vehicles.find(v=>v.id===selectedVehicleId)||null;
+      renderGlobal(); renderVehiclesSection(); showToast('Kilometre güncellendi!');
+    }catch(e){alert('Hata: '+e.message);}
   };
 
   window.exportCSV = function() {
-    if (!data.length) { alert('Dışa aktarılacak kayıt bulunamadı.'); return; }
-    let csv = "data:text/csv;charset=utf-8,\uFEFF";
-    csv += "Tarih,Tip,Enerji (kWh),Birim Fiyat (TL),Toplam Tutar (TL),Not\n";
+    if(!data.length){alert('Dışa aktarılacak kayıt bulunamadı.');return;}
+    let csv="data:text/csv;charset=utf-8,\uFEFF";
+    csv+="Tarih,Tip,Enerji (kWh),Birim Fiyat (TL),Toplam Tutar (TL),Not\n";
     [...data].sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(r=>{
-      csv += `${r.date},${r.type},${r.kwh.toFixed(2)},${r.price.toFixed(2)},${(r.kwh*r.price).toFixed(2)},${(r.note||'').replace(/,/g,' ')}\n`;
+      csv+=`${r.date},${r.type},${r.kwh.toFixed(2)},${r.price.toFixed(2)},${(r.kwh*r.price).toFixed(2)},${(r.note||'').replace(/,/g,' ')}\n`;
     });
-    const link = document.createElement('a');
-    link.href = encodeURI(csv);
-    link.download = `${selectedVehicle?.make||'ev'}_${selectedVehicle?.model||'sarj'}_kayitlari.csv`;
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    const link=document.createElement('a');
+    link.href=encodeURI(csv);
+    link.download=`${selectedVehicle?.make||'ev'}_${selectedVehicle?.model||'sarj'}.csv`;
+    document.body.appendChild(link);link.click();document.body.removeChild(link);
   };
 
   window.importCSV = async function() {
-    if (!selectedVehicleId) { alert('Önce bir araç seçin.'); return; }
-    const input = document.createElement('input');
-    input.type='file'; input.accept='.csv,text/csv';
-    input.onchange = async e => {
-      const file = e.target.files[0]; if (!file) return;
-      const text  = await file.text();
-      const lines = text.split('\n').filter(l=>l.trim());
-      if (lines.length < 2) { alert('CSV dosyası boş veya hatalı.'); return; }
-      let count = 0;
-      for (let i=1; i<lines.length; i++) {
-        const parts = lines[i].split(',');
-        if (parts.length < 4) continue;
-        const date  = parts[0].trim();
-        const type  = parts[1].trim().toUpperCase();
-        const kwh   = parseFloat(parts[2]);
-        const price = parseFloat(parts[3]);
-        const note  = parts.slice(5).join(',').trim()||parts[4]?.trim()||'';
-        if (!date||isNaN(kwh)||isNaN(price)) continue;
+    if(!selectedVehicleId){alert('Önce bir araç seçin.');return;}
+    const input=document.createElement('input');input.type='file';input.accept='.csv,text/csv';
+    input.onchange=async e=>{
+      const file=e.target.files[0];if(!file) return;
+      const text=await file.text();
+      const lines=text.split('\n').filter(l=>l.trim());
+      if(lines.length<2){alert('CSV dosyası boş veya hatalı.');return;}
+      let count=0;
+      for(let i=1;i<lines.length;i++){
+        const p=lines[i].split(',');if(p.length<4) continue;
+        const date=p[0].trim(),type=p[1].trim().toUpperCase();
+        const kwh=parseFloat(p[2]),price=parseFloat(p[3]);
+        const note=p.slice(5).join(',').trim()||p[4]?.trim()||'';
+        if(!date||isNaN(kwh)||isNaN(price)) continue;
         await addDoc(collection(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges'),
-          { date, type, kwh, price, note, createdAt:serverTimestamp() });
+          {date,type,kwh,price,note,createdAt:serverTimestamp()});
         count++;
       }
-      if (count > 0) showToast(`${count} kayıt eklendi!`);
+      if(count>0) showToast(`${count} kayıt eklendi!`);
       else alert('Yeni kayıt bulunamadı veya format hatalı.');
     };
     input.click();
   };
 
-  // ============================================================
   // RENDER
-  // ============================================================
   window.renderAll = function() {
-    document.getElementById('monthLabel').textContent = MONTHS_TR[viewMonth]+' '+viewYear;
-    document.getElementById('yearTitle').textContent  = viewYear;
-    const km = selectedVehicle?.km||0;
-    const kmInput = document.getElementById('fCurrentKm');
-    if (kmInput && !kmInput.dataset.userEdited) kmInput.value = km||'';
-    renderStats(); renderGlobal(); renderTable(); renderBars();
+    const ml=document.getElementById('monthLabel');
+    const yt=document.getElementById('yearTitle');
+    if(ml) ml.textContent=MONTHS_TR[viewMonth]+' '+viewYear;
+    if(yt) yt.textContent=viewYear;
+    const km=selectedVehicle?.km||0;
+    const ki=document.getElementById('fCurrentKm');
+    if(ki&&!ki.dataset.userEdited) ki.value=km||'';
+    renderStats();renderGlobal();renderTable();renderBars();
   };
 
   window.renderGlobal = function() {
-    const km       = selectedVehicle?.km||0;
-    const yearData = data.filter(d=>new Date(d.date).getFullYear()===viewYear);
-    const yearKwh  = yearData.reduce((s,d)=>s+d.kwh,0);
-    const yearCost = yearData.reduce((s,d)=>s+(d.kwh*d.price),0);
-    const allCost  = data.reduce((s,d)=>s+(d.kwh*d.price),0);
-    const tlKm     = km>0?(allCost/km):0;
-    animateValue('valTlKm',0,tlKm,400);
-    animateValue('valYearKwh',0,yearKwh,400);
-    animateValue('valYearCost',0,yearCost,400);
+    const km=selectedVehicle?.km||0;
+    const yd=data.filter(d=>new Date(d.date).getFullYear()===viewYear);
+    const yK=yd.reduce((s,d)=>s+d.kwh,0);
+    const yC=yd.reduce((s,d)=>s+(d.kwh*d.price),0);
+    const aC=data.reduce((s,d)=>s+(d.kwh*d.price),0);
+    animateValue('valTlKm',0,km>0?(aC/km):0,400);
+    animateValue('valYearKwh',0,yK,400);
+    animateValue('valYearCost',0,yC,400);
   };
 
   window.renderStats = function() {
-    const md  = data.filter(d=>{ const dt=new Date(d.date); return dt.getFullYear()===viewYear&&dt.getMonth()===viewMonth; });
-    const ac  = md.filter(d=>d.type==='AC'), dc=md.filter(d=>d.type==='DC');
-    const totKwh=md.reduce((s,d)=>s+d.kwh,0), totCost=md.reduce((s,d)=>s+d.kwh*d.price,0);
-    const acKwh=ac.reduce((s,d)=>s+d.kwh,0), dcKwh=dc.reduce((s,d)=>s+d.kwh,0);
+    const md=data.filter(d=>{const dt=new Date(d.date);return dt.getFullYear()===viewYear&&dt.getMonth()===viewMonth;});
+    const ac=md.filter(d=>d.type==='AC'),dc=md.filter(d=>d.type==='DC');
+    const tK=md.reduce((s,d)=>s+d.kwh,0),tC=md.reduce((s,d)=>s+d.kwh*d.price,0);
+    const aK=ac.reduce((s,d)=>s+d.kwh,0),dK=dc.reduce((s,d)=>s+d.kwh,0);
     document.getElementById('stats').innerHTML=`
-      <div class="stat-card total"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg> Aylık Toplam Şarj</div><div class="stat-value"><span id="animTotKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div><div class="stat-sub">${md.length} seans</div></div>
-      <div class="stat-card ac-card"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg> Aylık AC Şarj</div><div class="stat-value"><span id="animAcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div><div class="stat-sub">${ac.length} seans · ₺${ac.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div></div>
-      <div class="stat-card dc-card"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg> Aylık DC Şarj</div><div class="stat-value"><span id="animDcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div><div class="stat-sub">${dc.length} seans · ₺${dc.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div></div>
-      <div class="stat-card cost-card"><div class="stat-label"><svg class="icon-svg" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg> Aylık Toplam Maliyet</div><div class="stat-value"><span id="animTotCost" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>₺</span></div><div class="stat-sub">${totKwh>0?'~₺'+(totCost/totKwh).toFixed(2)+'/kWh ort.':'—'}</div></div>`;
-    setTimeout(()=>{ animateValue('animTotKwh',0,totKwh,400); animateValue('animAcKwh',0,acKwh,400); animateValue('animDcKwh',0,dcKwh,400); animateValue('animTotCost',0,totCost,400); },50);
+      <div class="stat-card total">
+        <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>Aylık Toplam Şarj</div>
+        <div class="stat-value"><span id="animTotKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
+        <div class="stat-sub">${md.length} seans</div>
+      </div>
+      <div class="stat-card ac-card">
+        <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>Aylık AC Şarj</div>
+        <div class="stat-value"><span id="animAcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
+        <div class="stat-sub">${ac.length} seans · ₺${ac.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div>
+      </div>
+      <div class="stat-card dc-card">
+        <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg>Aylık DC Şarj</div>
+        <div class="stat-value"><span id="animDcKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>kWh</span></div>
+        <div class="stat-sub">${dc.length} seans · ₺${dc.reduce((s,d)=>s+d.kwh*d.price,0).toFixed(0)}</div>
+      </div>
+      <div class="stat-card cost-card">
+        <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>Aylık Maliyet</div>
+        <div class="stat-value"><span id="animTotCost" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>₺</span></div>
+        <div class="stat-sub">${tK>0?'~₺'+(tC/tK).toFixed(2)+'/kWh ort.':'—'}</div>
+      </div>`;
+    setTimeout(()=>{
+      animateValue('animTotKwh',0,tK,400);animateValue('animAcKwh',0,aK,400);
+      animateValue('animDcKwh',0,dK,400);animateValue('animTotCost',0,tC,400);
+    },50);
   };
 
   window.renderTable = function() {
-    let md = data.filter(d=>{ const dt=new Date(d.date); return dt.getFullYear()===viewYear&&dt.getMonth()===viewMonth; });
-    if (filter!=='all') md=md.filter(d=>d.type===filter);
+    let md=data.filter(d=>{const dt=new Date(d.date);return dt.getFullYear()===viewYear&&dt.getMonth()===viewMonth;});
+    if(filter!=='all') md=md.filter(d=>d.type===filter);
     md.sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const tbody=document.getElementById('tableBody'), empty=document.getElementById('emptyMsg');
-    if (!md.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+    const tbody=document.getElementById('tableBody'),empty=document.getElementById('emptyMsg');
+    if(!md.length){tbody.innerHTML='';empty.style.display='block';return;}
     empty.style.display='none';
-    const acIcon=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>`;
-    const dcIcon=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg>`;
-    const delIcon=`<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
+    const acI=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>`;
+    const dcI=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg>`;
+    const dI=`<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
     tbody.innerHTML=md.map(d=>`
       <tr>
         <td>${new Date(d.date).toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})}</td>
-        <td><span class="badge badge-${d.type.toLowerCase()}">${d.type==='AC'?acIcon:dcIcon} ${d.type}</span></td>
+        <td><span class="badge badge-${d.type.toLowerCase()}">${d.type==='AC'?acI:dcI} ${d.type}</span></td>
         <td style="color:var(--text);font-weight:800;font-size:15px">${d.kwh.toFixed(2)}</td>
         <td>₺${d.price.toFixed(2)}</td>
         <td style="color:var(--green);font-weight:800;font-size:15px">₺${(d.kwh*d.price).toFixed(2)}</td>
         <td style="color:var(--muted);font-size:12px;font-family:'Outfit',sans-serif;font-weight:600;text-transform:uppercase">${d.note||'—'}</td>
-        <td><button class="del-btn" onclick="deleteCharge('${d.firebaseId}')">${delIcon}</button></td>
+        <td><button class="del-btn" onclick="deleteCharge('${d.firebaseId}')">${dI}</button></td>
       </tr>`).join('');
   };
 
   window.renderBars = function() {
+    const el=document.getElementById('barsEl');if(!el) return;
     const months=Array.from({length:12},(_,i)=>i);
-    const grouped=months.map(m=>{ const md=data.filter(d=>{ const dt=new Date(d.date); return dt.getFullYear()===viewYear&&dt.getMonth()===m; }); return { ac:md.filter(d=>d.type==='AC').reduce((s,d)=>s+d.kwh,0), dc:md.filter(d=>d.type==='DC').reduce((s,d)=>s+d.kwh,0) }; });
+    const grouped=months.map(m=>{
+      const md=data.filter(d=>{const dt=new Date(d.date);return dt.getFullYear()===viewYear&&dt.getMonth()===m;});
+      return{ac:md.filter(d=>d.type==='AC').reduce((s,d)=>s+d.kwh,0),
+             dc:md.filter(d=>d.type==='DC').reduce((s,d)=>s+d.kwh,0)};
+    });
     const maxVal=Math.max(...grouped.map(g=>g.ac+g.dc),1);
-    document.getElementById('barsEl').innerHTML=grouped.map((g,i)=>{ const acH=Math.max((g.ac/maxVal)*100,g.ac>0?4:0); const dcH=Math.max((g.dc/maxVal)*100,g.dc>0?4:0); const isActive=i===viewMonth; return `<div class="bar-group"><div class="bar-wrap"><div class="bar bar-ac" style="height:0px;opacity:${isActive?1:.4}" data-h="${acH}"></div><div class="bar bar-dc" style="height:0px;opacity:${isActive?1:.4}" data-h="${dcH}"></div></div><div class="bar-label" style="color:${isActive?'var(--text)':'var(--muted)'};font-weight:${isActive?'800':'600'};">${MONTHS_TR[i].slice(0,3)}</div></div>`; }).join('');
-    setTimeout(()=>{ document.querySelectorAll('.bar-ac').forEach(b=>b.style.height=b.getAttribute('data-h')+'%'); document.querySelectorAll('.bar-dc').forEach(b=>b.style.height=b.getAttribute('data-h')+'%'); },50);
+    el.innerHTML=grouped.map((g,i)=>{
+      const acH=Math.max((g.ac/maxVal)*100,g.ac>0?4:0);
+      const dcH=Math.max((g.dc/maxVal)*100,g.dc>0?4:0);
+      const isActive=i===viewMonth;
+      return `<div class="bar-group" onclick="jumpToMonth(${i})">
+        <div class="bar-wrap">
+          <div class="bar bar-ac" style="height:0px;opacity:${isActive?1:.35}" data-h="${acH}"></div>
+          <div class="bar bar-dc" style="height:0px;opacity:${isActive?1:.35}" data-h="${dcH}"></div>
+        </div>
+        <div class="bar-label" style="color:${isActive?'var(--text)':'var(--muted)'};font-weight:${isActive?800:600}">
+          ${MONTHS_TR[i].slice(0,3)}
+        </div>
+      </div>`;
+    }).join('');
+    setTimeout(()=>{
+      document.querySelectorAll('.bar-ac').forEach(b=>b.style.height=b.getAttribute('data-h')+'%');
+      document.querySelectorAll('.bar-dc').forEach(b=>b.style.height=b.getAttribute('data-h')+'%');
+    },50);
   };
 
+  window.jumpToMonth = function(m){viewMonth=m;renderAll();};
   window.setFilter = function(f,el) {
     filter=f;
     document.querySelectorAll('.tab').forEach(t=>t.className='tab');
@@ -494,482 +524,346 @@
     else el.className='tab active-dc';
     renderTable();
   };
+  window.prevMonth = function(){viewMonth--;if(viewMonth<0){viewMonth=11;viewYear--;}renderAll();};
+  window.nextMonth = function(){viewMonth++;if(viewMonth>11){viewMonth=0;viewYear++;}renderAll();};
 
-  window.prevMonth = function() { viewMonth--; if(viewMonth<0){viewMonth=11;viewYear--;} renderAll(); };
-  window.nextMonth = function() { viewMonth++; if(viewMonth>11){viewMonth=0;viewYear++;} renderAll(); };
-
-  // ============================================================
-  // NHTSA CAR API
-  // ============================================================
-  async function loadMakes(datalistId) {
-    try {
-      const res  = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/car?format=json');
-      const json = await res.json();
-      const makes= json.Results.map(r=>r.MakeName).sort();
-      const dl   = document.getElementById(datalistId);
-      if (dl) dl.innerHTML = makes.map(m=>`<option value="${m}">`).join('');
-    } catch(e) { console.log('Makes yüklenemedi:',e); }
+  // TURKISH EV SELECTS
+  function fillBrandSelect(brandId,modelId) {
+    const bSel=document.getElementById(brandId);if(!bSel) return;
+    bSel.innerHTML='<option value="">Marka seçin…</option>';
+    Object.keys(TR_EVS).sort((a,b)=>{
+      if(a==='Togg') return -1; if(b==='Togg') return 1;
+      return a.localeCompare(b,'tr');
+    }).forEach(mk=>{
+      const o=document.createElement('option');o.value=mk;o.textContent=mk;bSel.appendChild(o);
+    });
+    const mSel=document.getElementById(modelId);
+    if(mSel) mSel.innerHTML='<option value="">Önce marka seçin…</option>';
+    bSel.onchange=()=>onBrandChange(brandId,modelId);
   }
 
-  async function loadMakesForRegister()  { await loadMakes('makesListR'); }
-  async function loadMakesForAddVehicle(){ await loadMakes('makesListAV'); }
-
-  window.onMakeInput = async function(makeVal, modelsListId) {
-    if (!makeVal || makeVal.length < 2) return;
-    try {
-      const res  = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(makeVal)}?format=json`);
-      const json = await res.json();
-      const models = json.Results.map(r=>r.Model_Name).sort();
-      const dl = document.getElementById(modelsListId);
-      if (dl) dl.innerHTML = models.map(m=>`<option value="${m}">`).join('');
-    } catch(e) { console.log('Models yüklenemedi:',e); }
+  window.onBrandChange = function(brandId,modelId) {
+    const mk=document.getElementById(brandId).value;
+    const mSel=document.getElementById(modelId);if(!mSel) return;
+    if(!mk||!TR_EVS[mk]){mSel.innerHTML='<option value="">Model seçin…</option>';return;}
+    mSel.innerHTML='<option value="">Model seçin…</option>'+
+      TR_EVS[mk].map(m=>`<option value="${m}">${m}</option>`).join('');
   };
 
-  // ============================================================
   // NAV
-  // ============================================================
   window.showNavSection = function(id) {
     ['chargingSection','vehiclesSection','accountSection'].forEach(s=>{
-      const el=document.getElementById(s); if(el) el.style.display='none';
+      const el=document.getElementById(s);if(el) el.style.display='none';
     });
     document.getElementById(id).style.display='block';
     document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
     const map={chargingSection:'navCharging',vehiclesSection:'navVehicles',accountSection:'navAccount'};
     document.getElementById(map[id])?.classList.add('active');
-    if (id==='accountSection')  renderAccountSection();
-    if (id==='vehiclesSection') { renderVehiclesSection(); loadMakesForAddVehicle(); }
+    if(id==='accountSection') renderAccountSection();
+    if(id==='vehiclesSection'){renderVehiclesSection();fillBrandSelect('avMake','avModel');}
   };
 
-  // ============================================================
   // HELPERS
-  // ============================================================
   window.showToast = function(msg='İşlem başarılı!') {
     const t=document.getElementById('toast');
     t.querySelector('.toast-msg').textContent=msg;
     t.classList.add('show');
     setTimeout(()=>t.classList.remove('show'),2500);
   };
-
   window.animateValue = function(id,start,end,dur) {
-    const el=document.getElementById(id); if(!el) return;
+    const el=document.getElementById(id);if(!el) return;
     let ts=null;
-    const step=t=>{ if(!ts)ts=t; const p=Math.min((t-ts)/dur,1); el.textContent=((p*(end-start))+start).toFixed(2); if(p<1)requestAnimationFrame(step); else el.textContent=end.toFixed(2); };
+    const step=t=>{if(!ts)ts=t;const p=Math.min((t-ts)/dur,1);el.textContent=((p*(end-start))+start).toFixed(2);if(p<1)requestAnimationFrame(step);else el.textContent=end.toFixed(2);};
     requestAnimationFrame(step);
   };
-
-  function showErr(id,msg,ok=false) { const e=document.getElementById(id); if(!e)return; e.textContent=msg; e.style.color=ok?'var(--green)':'#ef4444'; e.style.display='block'; }
-  function clearErr(id) { const e=document.getElementById(id); if(e){e.textContent='';e.style.display='none';} }
-
-  function errMsg(code) {
-    const m={
-      'auth/user-not-found':'Bu e-posta ile kayıtlı kullanıcı bulunamadı.',
-      'auth/wrong-password':'Hatalı şifre.',
-      'auth/invalid-credential':'E-posta veya şifre hatalı.',
-      'auth/email-already-in-use':'Bu e-posta zaten kullanımda.',
-      'auth/weak-password':'Şifre çok zayıf (min. 6 karakter).',
-      'auth/invalid-email':'Geçersiz e-posta adresi.',
-      'auth/too-many-requests':'Çok fazla hatalı giriş. Lütfen bekleyin.',
-      'auth/requires-recent-login':'Bu işlem için tekrar giriş yapmanız gerekiyor.',
-    };
-    return m[code]||('Hata: '+code);
+  function showErr(id,msg,ok=false){const e=document.getElementById(id);if(!e)return;e.textContent=msg;e.style.color=ok?'var(--green)':'#ef4444';e.style.display='block';}
+  function clearErr(id){const e=document.getElementById(id);if(e){e.textContent='';e.style.display='none';}}
+  function errMsg(code){
+    const m={'auth/user-not-found':'Bu e-posta ile kayıtlı kullanıcı bulunamadı.','auth/wrong-password':'Hatalı şifre.','auth/invalid-credential':'E-posta veya şifre hatalı.','auth/email-already-in-use':'Bu e-posta zaten kullanımda.','auth/weak-password':'Şifre çok zayıf (min. 6 karakter).','auth/invalid-email':'Geçersiz e-posta.','auth/too-many-requests':'Çok fazla deneme. Lütfen bekleyin.','auth/requires-recent-login':'Bu işlem için tekrar giriş yapın.'};
+    return m[code]||'Hata: '+code;
   }
 
-  // ============================================================
   // INIT
-  // ============================================================
-  function buildYearOptions(selId) {
-    const sel=document.getElementById(selId); if(!sel)return;
+  function buildYearOptions(selId){
+    const sel=document.getElementById(selId);if(!sel) return;
     const cur=new Date().getFullYear();
-    for(let y=cur;y>=1990;y--){ const o=document.createElement('option'); o.value=y; o.textContent=y; sel.appendChild(o); }
+    for(let y=cur;y>=1990;y--){const o=document.createElement('option');o.value=y;o.textContent=y;sel.appendChild(o);}
   }
 
   function initApp() {
-    document.getElementById('fDate').valueAsDate = new Date();
+    document.getElementById('fDate').valueAsDate=new Date();
     showNavSection('chargingSection');
-    listenVehicles();
+    renderAll();       // ← Grafik hemen görünsün, Firestore beklemeden
+    listenVehicles();  // ← Veri gelince tekrar render eder
   }
 
-  document.addEventListener('DOMContentLoaded', ()=>{
+  document.addEventListener('DOMContentLoaded',()=>{
     buildYearOptions('rCarYear');
     buildYearOptions('avYear');
-    document.getElementById('fCurrentKm')?.addEventListener('input', function(){ this.dataset.userEdited='1'; });
+    fillBrandSelect('rCarMake','rCarModel');
+    document.getElementById('fCurrentKm')?.addEventListener('input',function(){this.dataset.userEdited='1';});
   });
 </script>
 
 <style>
-  :root {
-    --bg:#030712; --panel:#111827; --panel-hover:#1f2937; --panel2:#0f172a;
-    --border:rgba(255,255,255,0.08); --ac:#00e5ff; --dc:#ff6b35;
-    --green:#00ff88; --text:#f8fafc; --muted:#94a3b8; --accent:#3b82f6;
-    --radius:16px; --danger:#ef4444;
-  }
+  :root{--bg:#030712;--panel:#111827;--panel-hover:#1f2937;--panel2:#0f172a;--border:rgba(255,255,255,.08);--ac:#00e5ff;--dc:#ff6b35;--green:#00ff88;--text:#f8fafc;--muted:#94a3b8;--accent:#3b82f6;--radius:16px;--danger:#ef4444;}
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-height:100vh;overflow-x:hidden;}
-  body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;
-    background-image:radial-gradient(circle at 15% 0%,rgba(0,229,255,.08) 0%,transparent 40%),
-    radial-gradient(circle at 85% 20%,rgba(59,130,246,.08) 0%,transparent 40%),
-    radial-gradient(circle at 50% 100%,rgba(0,255,136,.05) 0%,transparent 50%),
-    radial-gradient(circle at 80% 80%,rgba(167,139,250,.06) 0%,transparent 40%);}
+  body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;background-image:radial-gradient(circle at 15% 0%,rgba(0,229,255,.08) 0%,transparent 40%),radial-gradient(circle at 85% 20%,rgba(59,130,246,.08) 0%,transparent 40%),radial-gradient(circle at 50% 100%,rgba(0,255,136,.05) 0%,transparent 50%);}
 
-  /* ---- AUTH SCREENS ---- */
-  #loginScreen,#registerScreen,#verifyScreen{
-    position:fixed;top:0;left:0;width:100%;height:100%;
-    background:var(--bg);z-index:9999;display:flex;
-    align-items:center;justify-content:center;flex-direction:column;gap:0;overflow-y:auto;padding:20px 0;}
-  .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-    padding:36px 32px;width:90%;max-width:460px;display:flex;flex-direction:column;gap:20px;}
-  .auth-logo{display:flex;align-items:center;gap:14px;margin-bottom:4px;}
-  .auth-logo-icon{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--ac),var(--accent));
-    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .auth-logo-icon svg{width:26px;height:26px;fill:#000;}
-  .auth-logo h1{font-size:22px;font-weight:800;}
-  .auth-logo p{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:700;
-    text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
-  .auth-title{font-size:18px;font-weight:800;color:var(--text);}
-  .auth-sub{font-size:13px;color:var(--muted);}
-  .auth-field{display:flex;flex-direction:column;gap:8px;}
-  .auth-field label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;}
-  .auth-field input,.auth-field select{
-    background:var(--panel2);border:1px solid var(--border);color:var(--text);
-    border-radius:10px;padding:13px 16px;font-family:'JetBrains Mono',monospace;
-    font-size:15px;font-weight:600;outline:none;transition:border .2s;width:100%;}
+  /* AUTH */
+  #loginScreen,#registerScreen,#verifyScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;overflow-y:auto;padding:24px 0;}
+  .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:34px 30px;width:90%;max-width:460px;display:flex;flex-direction:column;gap:17px;}
+  .auth-logo{display:flex;align-items:center;gap:13px;}
+  .auth-logo-icon{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,var(--ac),var(--accent));display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .auth-logo-icon svg{width:22px;height:22px;fill:#000;}
+  .auth-logo h1{font-size:20px;font-weight:800;}
+  .auth-logo p{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
+  .auth-title{font-size:18px;font-weight:800;}
+  .auth-section-label{font-size:11px;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-weight:700;padding-bottom:3px;border-bottom:1px solid rgba(0,229,255,.2);}
+  .auth-field{display:flex;flex-direction:column;gap:7px;}
+  .auth-field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;}
+  .auth-field input,.auth-field select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;outline:none;transition:border .2s;width:100%;}
   .auth-field input:focus,.auth-field select:focus{border-color:var(--ac);}
   .auth-field select option{background:var(--panel2);}
-  .auth-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  .auth-btn{background:linear-gradient(90deg,var(--ac),var(--accent));border:none;color:#000;
-    border-radius:10px;padding:14px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:800;
-    cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:opacity .2s;width:100%;}
-  .auth-btn:hover{opacity:.88;}
-  .auth-btn:disabled{opacity:.5;cursor:not-allowed;}
-  .auth-btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted);
-    border-radius:10px;padding:12px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;
-    cursor:pointer;transition:all .2s;width:100%;}
+  .auth-grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+  .auth-btn{background:linear-gradient(90deg,var(--ac),var(--accent));border:none;color:#000;border-radius:10px;padding:13px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:1px;width:100%;transition:opacity .2s;}
+  .auth-btn:hover{opacity:.88;}.auth-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .auth-btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:11px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;width:100%;}
   .auth-btn-ghost:hover{border-color:var(--ac);color:var(--ac);}
-  .auth-link{color:var(--ac);cursor:pointer;font-weight:700;background:none;border:none;
-    font-family:'Outfit',sans-serif;font-size:14px;text-decoration:underline;}
-  .auth-err{font-size:13px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,.1);
-    border:1px solid rgba(239,68,68,.3);display:none;}
+  .auth-link{color:var(--ac);cursor:pointer;font-weight:700;background:none;border:none;font-family:'Outfit',sans-serif;font-size:14px;text-decoration:underline;}
+  .auth-err{font-size:13px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);display:none;}
   .auth-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;}
   .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border);}
-  .verify-icon{font-size:48px;text-align:center;}
-  .verify-email{background:var(--panel2);border:1px solid var(--border);border-radius:8px;
-    padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--ac);text-align:center;}
+  .verify-icon{font-size:50px;text-align:center;}
+  .verify-email{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 15px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ac);text-align:center;word-break:break-all;}
 
-  /* ---- HEADER ---- */
+  /* HEADER */
   header{background:#030712;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
-  .header-top{display:flex;align-items:center;justify-content:space-between;padding:18px 30px;}
-  .header-left{display:flex;align-items:center;gap:16px;}
-  .logo-icon{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--ac),var(--accent));
-    display:flex;align-items:center;justify-content:center;box-shadow:0 0 15px rgba(0,229,255,.2);}
-  .logo-icon svg{width:22px;height:22px;fill:#000;}
-  .logo-text h1{font-size:20px;font-weight:800;letter-spacing:-.5px;}
-  .logo-text p{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;
-    font-weight:700;margin-top:2px;text-transform:uppercase;letter-spacing:1.5px;}
-  .header-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end;}
-  .btn-export,.btn-import{background:var(--panel2);border:1px solid var(--border);color:var(--text);
-    padding:10px 14px;border-radius:10px;font-size:13px;font-family:'Outfit',sans-serif;
-    font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;}
-  .btn-export:hover{border-color:var(--green);color:var(--green);}
-  .btn-import:hover{border-color:var(--ac);color:var(--ac);}
-  .btn-logout{background:var(--panel2);border:1px solid var(--border);color:var(--muted);
-    padding:10px 14px;border-radius:10px;font-size:13px;font-family:'Outfit',sans-serif;
-    font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;}
-  .btn-logout:hover{border-color:var(--danger);color:var(--danger);}
-  .month-nav{display:flex;align-items:center;gap:10px;}
-  .month-nav button{background:var(--panel);border:1px solid var(--border);color:var(--text);
-    width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:20px;transition:all .2s;
-    display:flex;align-items:center;justify-content:center;}
-  .month-nav button:hover{background:var(--panel-hover);border-color:var(--ac);color:var(--ac);}
-  #monthLabel{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--ac);
-    min-width:110px;text-align:center;font-weight:800;}
-
-  /* ---- NAV TABS ---- */
-  .header-nav{display:flex;gap:4px;padding:0 30px 14px;border-bottom:0;}
-  .nav-tab{background:transparent;border:none;color:var(--muted);padding:10px 20px;
-    border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;
-    cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;}
+  .header-top{display:flex;align-items:center;justify-content:space-between;padding:13px 26px;gap:12px;}
+  .header-left{display:flex;align-items:center;gap:13px;flex-shrink:0;}
+  .logo-icon{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--ac),var(--accent));display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(0,229,255,.2);}
+  .logo-icon svg{width:20px;height:20px;fill:#000;}
+  .logo-text h1{font-size:17px;font-weight:800;letter-spacing:-.5px;}
+  .logo-text p{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:700;margin-top:1px;text-transform:uppercase;letter-spacing:1.5px;}
+  /* sağ üst nav */
+  .header-nav{display:flex;align-items:center;gap:3px;}
+  .nav-tab{background:transparent;border:none;color:var(--muted);padding:8px 14px;border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;white-space:nowrap;}
   .nav-tab:hover{background:var(--panel);color:var(--text);}
   .nav-tab.active{background:var(--panel);color:var(--text);box-shadow:inset 0 -2px 0 var(--ac);}
-  .nav-tab svg{width:16px;height:16px;fill:currentColor;}
-
-  /* ---- VEHICLE SELECTOR ---- */
-  #vehicleSelector{display:none;gap:8px;padding:10px 30px;flex-wrap:wrap;
-    border-top:1px solid var(--border);background:rgba(0,0,0,.2);}
-  .vsel-btn{background:var(--panel2);border:1px solid var(--border);color:var(--muted);
-    padding:8px 16px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;
-    font-weight:600;cursor:pointer;transition:all .2s;}
+  .nav-tab svg{width:14px;height:14px;fill:currentColor;}
+  /* araç seçici bar */
+  #vehicleSelector{display:none;gap:7px;padding:7px 26px;flex-wrap:wrap;border-top:1px solid var(--border);background:rgba(0,0,0,.25);}
+  .vsel-btn{background:var(--panel2);border:1px solid var(--border);color:var(--muted);padding:6px 13px;border-radius:7px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;}
   .vsel-btn:hover{border-color:var(--ac);color:var(--ac);}
-  .vsel-btn.active{background:rgba(0,229,255,.12);border-color:var(--ac);color:var(--ac);}
+  .vsel-btn.active{background:rgba(0,229,255,.1);border-color:var(--ac);color:var(--ac);}
 
-  /* ---- MAIN ---- */
-  main{max-width:1200px;margin:0 auto;padding:36px 20px;}
-  .icon-svg{width:18px;height:18px;vertical-align:middle;margin-right:8px;fill:currentColor;}
-  .section-box,.stat-card{background:var(--panel);border:1px solid var(--border);
-    border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,.2);transition:all .2s ease;}
-  .section-box{padding:28px 32px;margin-bottom:28px;}
-  .section-box h2{display:flex;align-items:center;font-size:16px;font-weight:800;
-    margin-bottom:28px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  /* MAIN */
+  main{max-width:1200px;margin:0 auto;padding:28px 18px;}
+  .icon-svg{width:16px;height:16px;vertical-align:middle;margin-right:7px;fill:currentColor;}
+  .section-box{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,.2);padding:24px 28px;margin-bottom:22px;}
+  .section-box h2{display:flex;align-items:center;font-size:14px;font-weight:800;margin-bottom:22px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
 
-  /* ---- STATS ---- */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:28px;}
-  .stat-card{padding:26px 24px;position:relative;overflow:hidden;}
-  .stat-card:hover{border-color:rgba(255,255,255,.2);transform:translateY(-3px);box-shadow:0 8px 25px rgba(0,0,0,.3);}
-  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:5px;opacity:.9;}
-  .stat-card.total::before{background:var(--green);}
-  .stat-card.ac-card::before{background:var(--ac);}
-  .stat-card.dc-card::before{background:var(--dc);}
-  .stat-card.cost-card::before{background:#a78bfa;}
-  .stat-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;
-    margin-bottom:14px;display:flex;align-items:center;font-weight:700;}
-  .stat-value{font-family:'JetBrains Mono',monospace;font-size:40px;font-weight:800;line-height:1.1;color:#fff;}
-  .stat-value span{font-size:15px;color:var(--muted);font-weight:500;margin-left:6px;}
-  .stat-sub{font-size:12px;color:var(--muted);margin-top:12px;font-family:'JetBrains Mono',monospace;font-weight:500;}
+  /* Ay satırı */
+  .month-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+  .month-row-title{font-size:14px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;}
+  .month-nav{display:flex;align-items:center;gap:8px;}
+  .month-nav button{background:var(--panel);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px;transition:all .2s;display:flex;align-items:center;justify-content:center;}
+  .month-nav button:hover{border-color:var(--ac);color:var(--ac);}
+  #monthLabel{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--ac);min-width:115px;text-align:center;font-weight:800;}
 
-  /* ---- FORMS ---- */
-  .form-row{display:grid;grid-template-columns:140px 1fr 1fr 1fr 1fr auto;gap:16px;align-items:end;}
-  .form-row-km{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:24px;align-items:end;}
-  .field{display:flex;flex-direction:column;gap:10px;}
-  .field label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;}
-  .field input,.field select{background:var(--panel2);border:1px solid var(--border);color:var(--text);
-    border-radius:10px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:16px;
-    font-weight:700;outline:none;transition:all .2s;width:100%;}
+  /* STATS */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:22px;}
+  .stat-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,.2);padding:22px 20px;position:relative;overflow:hidden;transition:all .2s;}
+  .stat-card:hover{border-color:rgba(255,255,255,.2);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3);}
+  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;opacity:.9;}
+  .stat-card.total::before{background:var(--green);}.stat-card.ac-card::before{background:var(--ac);}.stat-card.dc-card::before{background:var(--dc);}.stat-card.cost-card::before{background:#a78bfa;}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:11px;display:flex;align-items:center;font-weight:700;}
+  .stat-value{font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:800;line-height:1.1;color:#fff;}
+  .stat-value span{font-size:13px;color:var(--muted);font-weight:500;margin-left:4px;}
+  .stat-sub{font-size:11px;color:var(--muted);margin-top:9px;font-family:'JetBrains Mono',monospace;font-weight:500;}
+
+  /* FORMS */
+  .form-row{display:grid;grid-template-columns:140px 1fr 1fr 1fr 1fr auto;gap:13px;align-items:end;}
+  .form-row-km{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:18px;align-items:end;}
+  .field{display:flex;flex-direction:column;gap:8px;}
+  .field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;}
+  .field input,.field select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;outline:none;transition:all .2s;width:100%;}
   .field input:focus,.field select:focus{border-color:var(--ac);}
-  .btn-add{background:linear-gradient(90deg,var(--ac),var(--accent));border:none;color:#000;
-    border-radius:10px;padding:0 28px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:800;
-    cursor:pointer;white-space:nowrap;transition:all .2s;height:50px;display:flex;
-    align-items:center;justify-content:center;gap:8px;text-transform:uppercase;letter-spacing:1px;}
-  .btn-add:hover{opacity:.9;transform:translateY(-2px);}
+  .btn-add{background:linear-gradient(90deg,var(--ac),var(--accent));border:none;color:#000;border-radius:10px;padding:0 22px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .2s;height:46px;display:flex;align-items:center;justify-content:center;gap:7px;text-transform:uppercase;letter-spacing:1px;}
+  .btn-add:hover{opacity:.9;transform:translateY(-1px);}
 
-  /* ---- TABLE ---- */
-  .table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;margin:0 -32px;padding:0 32px;}
+  /* TABLE */
   .table-section{padding:0;}
-  .table-header{display:flex;align-items:center;justify-content:space-between;
-    padding:24px 32px;border-bottom:1px solid var(--border);}
-  .table-header h2{margin:0;}
-  .filter-tabs{display:flex;gap:8px;}
-  .tab{padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);
-    color:var(--muted);font-size:13px;cursor:pointer;font-family:'Outfit',sans-serif;
-    font-weight:700;transition:all .2s;display:flex;align-items:center;gap:6px;}
+  .table-header{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px;}
+  .table-header h2{margin:0;font-size:14px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  .table-header-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .filter-tabs{display:flex;gap:5px;}
+  .tab{padding:6px 13px;border-radius:7px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);font-size:12px;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:700;transition:all .2s;}
   .tab.active-all{background:rgba(255,255,255,.1);color:var(--text);border-color:rgba(255,255,255,.3);}
   .tab.active-ac{background:rgba(0,229,255,.15);color:var(--ac);border-color:rgba(0,229,255,.4);}
   .tab.active-dc{background:rgba(255,107,53,.15);color:var(--dc);border-color:rgba(255,107,53,.4);}
+  .btn-csv{background:var(--panel2);border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:7px;font-size:12px;font-family:'Outfit',sans-serif;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px;}
+  .btn-csv.export:hover{border-color:var(--green);color:var(--green);}
+  .btn-csv.import:hover{border-color:var(--ac);color:var(--ac);}
+  .table-wrapper{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;margin:0 -28px;padding:0 28px;}
   table{width:100%;border-collapse:collapse;}
   thead tr{background:rgba(0,0,0,.2);}
-  th{padding:18px 32px;text-align:left;font-size:12px;color:var(--muted);
-    text-transform:uppercase;letter-spacing:1px;font-weight:800;border-bottom:1px solid var(--border);}
-  td{padding:18px 32px;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:14px;
-    border-bottom:1px solid rgba(255,255,255,.05);}
+  th{padding:14px 28px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:800;border-bottom:1px solid var(--border);}
+  td{padding:14px 28px;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04);}
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:rgba(255,255,255,.02);}
-  .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;
-    font-size:12px;font-weight:800;letter-spacing:.5px;font-family:'Outfit',sans-serif;}
-  .badge svg{width:12px;height:12px;}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:5px;font-size:11px;font-weight:800;letter-spacing:.5px;font-family:'Outfit',sans-serif;}
+  .badge svg{width:11px;height:11px;}
   .badge-ac{background:rgba(0,229,255,.1);color:var(--ac);border:1px solid rgba(0,229,255,.3);}
   .badge-dc{background:rgba(255,107,53,.1);color:var(--dc);border:1px solid rgba(255,107,53,.3);}
-  .del-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;
-    padding:6px;border-radius:6px;transition:all .2s;}
-  .del-btn svg{width:20px;height:20px;fill:currentColor;}
+  .del-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:5px;border-radius:6px;transition:all .2s;}
+  .del-btn svg{width:18px;height:18px;fill:currentColor;}
   .del-btn:hover{color:var(--danger);background:rgba(239,68,68,.1);}
-  .empty{padding:50px;text-align:center;color:var(--muted);font-size:15px;font-weight:500;}
+  .empty{padding:44px;text-align:center;color:var(--muted);font-size:14px;font-weight:500;}
 
-  /* ---- BARS ---- */
-  .bars{display:flex;gap:10px;align-items:flex-end;height:160px;margin-top:10px;}
-  .bar-group{flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;height:100%;justify-content:flex-end;}
-  .bar-wrap{width:100%;display:flex;gap:4px;align-items:flex-end;height:130px;}
-  .bar{flex:1;border-radius:4px 4px 0 0;min-height:3px;transition:height .6s cubic-bezier(.2,.8,.2,1);}
-  .bar-ac{background:var(--ac);}
-  .bar-dc{background:var(--dc);}
-  .bar-label{font-family:'JetBrains Mono',monospace;font-size:12px;text-align:center;text-transform:uppercase;font-weight:700;}
-  .bar-legend{display:flex;gap:20px;margin-top:28px;justify-content:center;}
-  .legend-item{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;}
-  .legend-dot{width:14px;height:14px;border-radius:4px;}
+  /* BARS */
+  .bars{display:flex;gap:7px;align-items:flex-end;height:140px;margin-top:8px;}
+  .bar-group{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;cursor:pointer;transition:opacity .2s;}
+  .bar-group:hover .bar{opacity:1!important;}
+  .bar-wrap{width:100%;display:flex;gap:3px;align-items:flex-end;height:110px;}
+  .bar{flex:1;border-radius:4px 4px 0 0;min-height:2px;transition:height .6s cubic-bezier(.2,.8,.2,1);}
+  .bar-ac{background:var(--ac);}.bar-dc{background:var(--dc);}
+  .bar-label{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center;text-transform:uppercase;font-weight:700;transition:color .2s;}
+  .bar-legend{display:flex;gap:18px;margin-top:20px;justify-content:center;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;}
+  .legend-dot{width:11px;height:11px;border-radius:3px;}
 
-  /* ---- VEHICLES SECTION ---- */
-  .vehicle-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;
-    padding:20px 24px;display:flex;align-items:center;gap:20px;margin-bottom:12px;transition:all .2s;}
-  .vehicle-card:hover{border-color:rgba(255,255,255,.15);}
-  .vehicle-card.vc-active{border-color:var(--ac);background:rgba(0,229,255,.05);}
-  .vc-icon{font-size:32px;flex-shrink:0;}
+  /* VEHICLES */
+  .vehicle-card{background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:16px 20px;display:flex;align-items:center;gap:16px;margin-bottom:9px;transition:all .2s;}
+  .vehicle-card:hover{border-color:rgba(255,255,255,.14);}
+  .vehicle-card.vc-active{border-color:var(--ac);background:rgba(0,229,255,.04);}
+  .vc-icon{font-size:28px;flex-shrink:0;}
   .vc-info{flex:1;}
-  .vc-name{font-size:17px;font-weight:800;color:var(--text);}
-  .vc-sub{font-size:13px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace;}
-  .primary-badge{display:inline-block;background:rgba(0,255,136,.1);color:var(--green);
-    border:1px solid rgba(0,255,136,.3);border-radius:6px;padding:3px 10px;
-    font-size:11px;font-weight:700;margin-top:6px;font-family:'Outfit',sans-serif;text-transform:uppercase;}
-  .vc-actions{display:flex;align-items:center;gap:10px;}
-  .btn-sel-v{background:var(--panel);border:1px solid var(--border);color:var(--muted);
-    padding:10px 16px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;
-    font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;}
+  .vc-name{font-size:15px;font-weight:800;color:var(--text);}
+  .vc-sub{font-size:12px;color:var(--muted);margin-top:3px;font-family:'JetBrains Mono',monospace;}
+  .primary-badge{display:inline-block;background:rgba(0,255,136,.1);color:var(--green);border:1px solid rgba(0,255,136,.3);border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;margin-top:4px;font-family:'Outfit',sans-serif;text-transform:uppercase;}
+  .vc-actions{display:flex;align-items:center;gap:7px;}
+  .btn-sel-v{background:var(--panel);border:1px solid var(--border);color:var(--muted);padding:8px 13px;border-radius:7px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;}
   .btn-sel-v:hover{border-color:var(--ac);color:var(--ac);}
   .btn-sel-v.btn-sel-active{background:rgba(0,229,255,.1);border-color:var(--ac);color:var(--ac);}
-  .add-vehicle-form{display:grid;grid-template-columns:1fr 1fr 120px auto;gap:16px;align-items:end;margin-top:8px;}
+  .add-vehicle-form{display:grid;grid-template-columns:1fr 1fr 110px auto;gap:13px;align-items:end;margin-top:4px;}
 
-  /* ---- ACCOUNT SECTION ---- */
-  .acc-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;}
-  .acc-info-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:24px 28px;}
-  .acc-info-card h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;
-    font-weight:700;margin-bottom:20px;}
-  .acc-row{display:flex;justify-content:space-between;align-items:center;
-    padding:12px 0;border-bottom:1px solid var(--border);}
+  /* ACCOUNT */
+  .acc-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;}
+  .acc-info-card{background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:20px 24px;}
+  .acc-info-card h3{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:16px;}
+  .acc-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
   .acc-row:last-child{border-bottom:none;}
-  .acc-row-label{font-size:13px;color:var(--muted);font-weight:600;}
-  .acc-row-val{font-size:14px;color:var(--text);font-weight:700;font-family:'JetBrains Mono',monospace;}
-  .acc-edit-form{display:flex;flex-direction:column;gap:16px;}
-  .acc-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  .btn-save-profile{background:linear-gradient(90deg,var(--green),#00c060);border:none;color:#000;
-    border-radius:10px;padding:13px 28px;font-family:'Outfit',sans-serif;font-size:14px;
-    font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:opacity .2s;}
+  .acc-row-label{font-size:12px;color:var(--muted);font-weight:600;}
+  .acc-row-val{font-size:13px;color:var(--text);font-weight:700;font-family:'JetBrains Mono',monospace;word-break:break-all;text-align:right;max-width:60%;}
+  .acc-edit-form{display:flex;flex-direction:column;gap:13px;}
+  .acc-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+  .btn-save-profile{background:linear-gradient(90deg,var(--green),#00c060);border:none;color:#000;border-radius:10px;padding:12px 22px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:opacity .2s;}
   .btn-save-profile:hover{opacity:.88;}
-  .danger-zone{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);
-    border-radius:12px;padding:24px 28px;margin-top:0;}
-  .danger-zone h3{font-size:13px;color:var(--danger);text-transform:uppercase;letter-spacing:1px;
-    font-weight:700;margin-bottom:12px;}
-  .danger-zone p{font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6;}
-  .btn-delete-account{background:transparent;border:1px solid rgba(239,68,68,.5);color:var(--danger);
-    border-radius:10px;padding:12px 24px;font-family:'Outfit',sans-serif;font-size:14px;
-    font-weight:700;cursor:pointer;transition:all .2s;}
+  .btn-logout-big{background:var(--panel2);border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:11px 20px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:7px;}
+  .btn-logout-big:hover{border-color:var(--ac);color:var(--ac);}
+  .danger-zone{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:11px;padding:20px 24px;}
+  .danger-zone h3{font-size:11px;color:var(--danger);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:9px;}
+  .danger-zone p{font-size:13px;color:var(--muted);margin-bottom:13px;line-height:1.6;}
+  .btn-delete-account{background:transparent;border:1px solid rgba(239,68,68,.5);color:var(--danger);border-radius:10px;padding:10px 20px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;}
   .btn-delete-account:hover{background:rgba(239,68,68,.1);}
 
-  /* ---- TOAST ---- */
-  .toast{position:fixed;bottom:24px;right:24px;background:var(--green);color:#022c22;
-    padding:14px 24px;border-radius:10px;font-weight:800;font-size:14px;
-    transform:translateY(100px);opacity:0;transition:all .4s ease-out;z-index:9999;
-    display:flex;align-items:center;gap:10px;}
+  /* TOAST */
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--green);color:#022c22;padding:12px 20px;border-radius:10px;font-weight:800;font-size:14px;transform:translateY(100px);opacity:0;transition:all .4s ease-out;z-index:9999;display:flex;align-items:center;gap:8px;}
   .toast.show{transform:translateY(0);opacity:1;}
 
-  /* ---- RESPONSIVE ---- */
-  @media(max-width:900px){
+  /* RESPONSIVE */
+  @media(max-width:960px){
     .stats{grid-template-columns:repeat(2,1fr);}
     .form-row,.form-row-km{grid-template-columns:1fr 1fr;}
     .btn-add{grid-column:span 2;}
-    .header-right{flex-direction:column;align-items:flex-end;gap:8px;}
-    .header-nav{padding:0 16px 12px;}
-    .nav-tab{padding:8px 14px;font-size:13px;}
-    #vehicleSelector{padding:10px 16px;}
-    main{padding:24px 16px;}
-    .section-box{padding:20px 16px;}
-    .table-header{padding:16px;flex-direction:column;align-items:flex-start;gap:12px;}
-    .table-wrapper{margin:0 -16px;padding:0 16px;}
-    th,td{padding:14px 16px;font-size:13px;}
     .acc-grid{grid-template-columns:1fr;}
     .add-vehicle-form{grid-template-columns:1fr 1fr;}
-    .auth-form-grid{grid-template-columns:1fr;}
-    .acc-edit-grid{grid-template-columns:1fr;}
+    main{padding:18px 14px;}
+    .section-box{padding:18px 16px;}
+    .table-header{padding:14px 16px;}
+    .table-wrapper{margin:0 -16px;padding:0 16px;}
+    th,td{padding:12px 16px;font-size:12px;}
+    .header-top{padding:11px 16px;}
+    #vehicleSelector{padding:7px 16px;}
   }
-  @media(max-width:480px){
+  @media(max-width:600px){
+    .header-nav .nav-tab span.nav-label{display:none;}
+    .nav-tab{padding:8px 10px;}
+  }
+  @media(max-width:540px){
     .stats{grid-template-columns:1fr;}
     .form-row,.form-row-km{grid-template-columns:1fr;}
     .btn-add{grid-column:span 1;}
-    .header-top{padding:14px 16px;}
     .vehicle-card{flex-direction:column;align-items:flex-start;}
     .vc-actions{width:100%;justify-content:space-between;}
+    .auth-grid2{grid-template-columns:1fr;}
+    .acc-edit-grid{grid-template-columns:1fr;}
+    .add-vehicle-form{grid-template-columns:1fr;}
   }
 </style>
 </head>
 <body>
 
-<!-- ================================================================
-     LOGIN SCREEN
-================================================================ -->
+<!-- LOGIN -->
 <div id="loginScreen" style="display:flex">
   <div class="auth-card">
     <div class="auth-logo">
       <div class="auth-logo-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-      <div><div class="auth-logo" style="gap:0"><h1 style="font-size:20px">EV Şarj Takip</h1></div>
-        <p style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Enerji & Maliyet Takibi</p>
-      </div>
+      <div><h1>EV Şarj Takip</h1><p>Enerji & Maliyet Takibi</p></div>
     </div>
     <div class="auth-title">Giriş Yap</div>
-    <div class="auth-field">
-      <label>E-posta</label>
-      <input type="email" id="lEmail" placeholder="ornek@mail.com" onkeypress="if(event.key==='Enter')login()">
-    </div>
-    <div class="auth-field">
-      <label>Şifre</label>
-      <input type="password" id="lPassword" placeholder="••••••••" onkeypress="if(event.key==='Enter')login()">
-    </div>
+    <div class="auth-field"><label>E-posta</label><input type="email" id="lEmail" placeholder="ornek@mail.com" onkeypress="if(event.key==='Enter')login()"></div>
+    <div class="auth-field"><label>Şifre</label><input type="password" id="lPassword" placeholder="••••••••" onkeypress="if(event.key==='Enter')login()"></div>
     <div id="loginError" class="auth-err"></div>
     <button class="auth-btn" id="loginBtn" onclick="login()">Giriş Yap</button>
     <button class="auth-btn-ghost" onclick="forgotPassword()">🔑 Şifremi Unuttum</button>
     <div class="auth-divider">veya</div>
-    <div style="text-align:center;font-size:14px;color:var(--muted)">
-      Hesabın yok mu?
-      <button class="auth-link" onclick="goToRegister()">Kayıt Ol</button>
-    </div>
+    <div style="text-align:center;font-size:14px;color:var(--muted)">Hesabın yok mu? <button class="auth-link" onclick="goToRegister()">Kayıt Ol</button></div>
   </div>
 </div>
 
-<!-- ================================================================
-     REGISTER SCREEN
-================================================================ -->
-<div id="registerScreen" style="display:none;padding:30px 0">
-  <div class="auth-card" style="max-width:520px">
+<!-- REGISTER -->
+<div id="registerScreen" style="display:none;padding:28px 0">
+  <div class="auth-card" style="max-width:490px">
     <div class="auth-title">Hesap Oluştur</div>
-    <div class="auth-sub">Tüm alanları eksiksiz doldurun.</div>
-
-    <div style="font-size:11px;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:-8px">👤 Kişisel Bilgiler</div>
-    <div class="auth-form-grid">
+    <div class="auth-section-label">👤 Kişisel Bilgiler</div>
+    <div class="auth-grid2">
       <div class="auth-field"><label>Ad</label><input type="text" id="rFirstName" placeholder="Berkay"></div>
       <div class="auth-field"><label>Soyad</label><input type="text" id="rLastName" placeholder="Yılmaz"></div>
     </div>
-    <div class="auth-form-grid">
+    <div class="auth-grid2">
       <div class="auth-field"><label>Doğum Tarihi</label><input type="date" id="rBirthDate"></div>
       <div class="auth-field"><label>Cinsiyet</label>
-        <select id="rGender">
-          <option value="">Seçin…</option>
-          <option value="male">Erkek</option>
-          <option value="female">Kadın</option>
-          <option value="other">Diğer</option>
-        </select>
+        <select id="rGender"><option value="">Seçin…</option><option value="male">Erkek</option><option value="female">Kadın</option><option value="other">Diğer</option></select>
       </div>
     </div>
     <div class="auth-field"><label>Şehir</label><input type="text" id="rCity" placeholder="Bursa"></div>
-
-    <div style="font-size:11px;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:-8px;margin-top:4px">🔐 Hesap Bilgileri</div>
+    <div class="auth-section-label">🔐 Hesap Bilgileri</div>
     <div class="auth-field"><label>E-posta</label><input type="email" id="rEmail" placeholder="ornek@mail.com"></div>
-    <div class="auth-form-grid">
+    <div class="auth-grid2">
       <div class="auth-field"><label>Şifre</label><input type="password" id="rPassword" placeholder="Min. 6 karakter"></div>
-      <div class="auth-field"><label>Şifre Tekrar</label><input type="password" id="rPassword2" placeholder="Şifre tekrar"></div>
+      <div class="auth-field"><label>Şifre Tekrar</label><input type="password" id="rPassword2" placeholder="Tekrar girin"></div>
     </div>
-
-    <div style="font-size:11px;color:var(--ac);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:-8px;margin-top:4px">🚗 İlk Araç Bilgileri</div>
-    <datalist id="makesListR"></datalist>
-    <datalist id="modelsListR"></datalist>
-    <div class="auth-form-grid">
-      <div class="auth-field">
-        <label>Marka</label>
-        <input type="text" id="rCarMake" list="makesListR" placeholder="BYD, Tesla, BMW…"
-          oninput="onMakeInput(this.value,'modelsListR')">
-      </div>
-      <div class="auth-field">
-        <label>Model</label>
-        <input type="text" id="rCarModel" list="modelsListR" placeholder="Atto 3, Model 3…">
-      </div>
+    <div class="auth-section-label">🚗 İlk Araç</div>
+    <div class="auth-grid2">
+      <div class="auth-field"><label>Marka</label><select id="rCarMake"><option value="">Marka seçin…</option></select></div>
+      <div class="auth-field"><label>Model</label><select id="rCarModel"><option value="">Önce marka seçin…</option></select></div>
     </div>
-    <div class="auth-field">
-      <label>Araç Yılı</label>
-      <select id="rCarYear"><option value="">Yıl seçin…</option></select>
-    </div>
-
+    <div class="auth-field"><label>Araç Yılı</label><select id="rCarYear"><option value="">Yıl seçin…</option></select></div>
     <div id="registerError" class="auth-err"></div>
     <button class="auth-btn" id="registerBtn" onclick="register()">Kayıt Ol & E-posta Gönder</button>
-    <div style="text-align:center;font-size:14px;color:var(--muted)">
-      Zaten hesabın var mı?
-      <button class="auth-link" onclick="goToLogin()">Giriş Yap</button>
-    </div>
+    <div style="text-align:center;font-size:14px;color:var(--muted)">Zaten hesabın var mı? <button class="auth-link" onclick="goToLogin()">Giriş Yap</button></div>
   </div>
 </div>
 
-<!-- ================================================================
-     EMAIL VERIFY SCREEN
-================================================================ -->
+<!-- VERIFY -->
 <div id="verifyScreen" style="display:none">
-  <div class="auth-card" style="text-align:center;max-width:420px;gap:16px">
+  <div class="auth-card" style="text-align:center;max-width:390px;gap:15px">
     <div class="verify-icon">📧</div>
     <div class="auth-title">E-postanı Onayla</div>
-    <p style="color:var(--muted);font-size:14px;line-height:1.7">
-      Kayıt olduğun e-posta adresine bir doğrulama linki gönderdik. Lütfen gelen kutunu kontrol et ve linke tıkla.
-    </p>
+    <p style="color:var(--muted);font-size:14px;line-height:1.7">Kayıt olduğun adrese doğrulama linki gönderdik. Gelen kutunu kontrol et ve linke tıkla.</p>
     <div class="verify-email" id="verifyEmailDisplay">—</div>
     <button class="auth-btn" onclick="checkVerification()">✓ Onayladım, Devam Et</button>
     <button class="auth-btn-ghost" onclick="resendVerification()">📨 Tekrar Gönder</button>
@@ -977,90 +871,63 @@
   </div>
 </div>
 
-<!-- ================================================================
-     APP
-================================================================ -->
+<!-- APP -->
 <div id="appContent" style="display:none">
-
 <header>
   <div class="header-top">
     <div class="header-left">
       <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
       <div class="logo-text"><h1 id="headerTitle">EV Şarj Takip</h1><p>Şarj & Enerji Takibi</p></div>
     </div>
-    <div class="header-right">
-      <button class="btn-import" onclick="importCSV()">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2v2h14v-2H5z"/></svg>CSV Yükle
+    <!-- Sekmeler sağ üstte -->
+    <nav class="header-nav">
+      <button class="nav-tab active" id="navCharging" onclick="showNavSection('chargingSection')">
+        <svg viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg><span class="nav-label">Şarj Takip</span>
       </button>
-      <button class="btn-export" onclick="exportCSV()">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>CSV Yedekle
+      <button class="nav-tab" id="navVehicles" onclick="showNavSection('vehiclesSection')">
+        <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg><span class="nav-label">Araçlarım</span>
       </button>
-      <div class="month-nav">
-        <button onclick="prevMonth()">‹</button>
-        <span id="monthLabel"></span>
-        <button onclick="nextMonth()">›</button>
-      </div>
-      <button class="btn-logout" onclick="logout()">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-        Çıkış
+      <button class="nav-tab" id="navAccount" onclick="showNavSection('accountSection')">
+        <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span class="nav-label">Hesabım</span>
       </button>
-    </div>
+    </nav>
   </div>
-
-  <nav class="header-nav">
-    <button class="nav-tab active" id="navCharging" onclick="showNavSection('chargingSection')">
-      <svg viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>Şarj Takip
-    </button>
-    <button class="nav-tab" id="navVehicles" onclick="showNavSection('vehiclesSection')">
-      <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>Araçlarım
-    </button>
-    <button class="nav-tab" id="navAccount" onclick="showNavSection('accountSection')">
-      <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Hesabım
-    </button>
-  </nav>
-
   <div id="vehicleSelector"></div>
 </header>
 
 <main>
 
-  <!-- ============================
-       CHARGING SECTION
-  ============================ -->
+  <!-- ŞARJ TAKİP -->
   <div id="chargingSection">
-    <div class="stats" id="stats"></div>
-
-    <!-- Km & Year Summary -->
-    <div class="section-box">
-      <h2>
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
-        Araç Durumu & Yıllık Özet (<span id="yearTitle"></span>)
-      </h2>
-      <div class="form-row-km">
-        <div class="field"><label>Güncel Kilometre</label>
-          <input type="number" id="fCurrentKm" placeholder="0" min="0"></div>
-        <div class="field"><label>Km Başına Maliyet</label>
-          <div class="stat-value" style="color:var(--green)">
-            <span id="valTlKm" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>₺/km</span>
-          </div></div>
-        <div class="field"><label>Yıllık Toplam Şarj</label>
-          <div class="stat-value" style="color:#fff">
-            <span id="valYearKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span style="color:var(--muted)">kWh</span>
-          </div></div>
-        <div class="field"><label>Yıllık Toplam Maliyet</label>
-          <div class="stat-value" style="color:#fff">
-            <span id="valYearCost" style="color:inherit;font-size:inherit;margin:0">0.00</span><span style="color:var(--muted)">₺</span>
-          </div></div>
-        <button class="btn-add" onclick="saveKm()">KM GÜNCELLE</button>
+    <!-- Ay nav + başlık -->
+    <div class="month-row">
+      <div class="month-row-title">
+        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>Aylık Şarj Özeti
+      </div>
+      <div class="month-nav">
+        <button onclick="prevMonth()">‹</button>
+        <span id="monthLabel">—</span>
+        <button onclick="nextMonth()">›</button>
       </div>
     </div>
 
-    <!-- Bar Chart -->
+    <div class="stats" id="stats"></div>
+
+    <!-- Km & yıllık -->
     <div class="section-box">
-      <h2>
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm8 14H9v-6h2v6zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
-        Aylık Şarj Dağılımı (kWh)
-      </h2>
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>Araç Durumu & Yıllık Özet (<span id="yearTitle">—</span>)</h2>
+      <div class="form-row-km">
+        <div class="field"><label>Güncel Kilometre</label><input type="number" id="fCurrentKm" placeholder="0" min="0"></div>
+        <div class="field"><label>Km Başına Maliyet</label><div class="stat-value" style="color:var(--green)"><span id="valTlKm" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>₺/km</span></div></div>
+        <div class="field"><label>Yıllık Şarj</label><div class="stat-value"><span id="valYearKwh" style="color:inherit;font-size:inherit;margin:0">0.00</span><span style="color:var(--muted)">kWh</span></div></div>
+        <div class="field"><label>Yıllık Maliyet</label><div class="stat-value"><span id="valYearCost" style="color:inherit;font-size:inherit;margin:0">0.00</span><span style="color:var(--muted)">₺</span></div></div>
+        <button class="btn-add" onclick="saveKm()">KM KAYDET</button>
+      </div>
+    </div>
+
+    <!-- Grafik -->
+    <div class="section-box">
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm8 14H9v-6h2v6zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Aylık Şarj Dağılımı (kWh) <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">— bara tıklayarak aya geç</span></h2>
       <div class="bars" id="barsEl"></div>
       <div class="bar-legend">
         <div class="legend-item" style="color:var(--ac)"><div class="legend-dot" style="background:var(--ac)"></div>AC (Yavaş)</div>
@@ -1068,17 +935,12 @@
       </div>
     </div>
 
-    <!-- Add Charge Form -->
+    <!-- Yeni şarj ekle -->
     <div class="section-box">
-      <h2>
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-        Yeni Şarj Ekle
-      </h2>
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Yeni Şarj Ekle</h2>
       <div class="form-row">
         <div class="field"><label>Tarih</label><input type="date" id="fDate"></div>
-        <div class="field"><label>Şarj Tipi</label>
-          <select id="fType"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select>
-        </div>
+        <div class="field"><label>Şarj Tipi</label><select id="fType"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select></div>
         <div class="field"><label>Enerji (kWh)</label><input type="number" id="fKwh" placeholder="0.00" step="0.01" min="0"></div>
         <div class="field"><label>Birim Fiyat (₺/kWh)</label><input type="number" id="fPrice" placeholder="0.00" step="0.01" min="0"></div>
         <div class="field"><label>Not (Opsiyonel)</label><input type="text" id="fNote" placeholder="Ev, ZES, Eşarj…"></div>
@@ -1086,74 +948,54 @@
       </div>
     </div>
 
-    <!-- Table -->
+    <!-- Tablo + CSV butonları burada -->
     <div class="section-box table-section">
       <div class="table-header">
         <h2 style="margin:0">Şarj Kayıtları</h2>
-        <div class="filter-tabs">
-          <button class="tab active-all" onclick="setFilter('all',this)">Tümü</button>
-          <button class="tab" onclick="setFilter('AC',this)">AC</button>
-          <button class="tab" onclick="setFilter('DC',this)">DC</button>
+        <div class="table-header-right">
+          <button class="btn-csv import" onclick="importCSV()">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2v2h14v-2H5z"/></svg>CSV Yükle
+          </button>
+          <button class="btn-csv export" onclick="exportCSV()">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>CSV Yedekle
+          </button>
+          <div class="filter-tabs">
+            <button class="tab active-all" onclick="setFilter('all',this)">Tümü</button>
+            <button class="tab" onclick="setFilter('AC',this)">AC</button>
+            <button class="tab" onclick="setFilter('DC',this)">DC</button>
+          </div>
         </div>
       </div>
       <div class="table-wrapper">
         <table>
-          <thead><tr>
-            <th>Tarih</th><th>Tip</th><th>Enerji (kWh)</th>
-            <th>Birim Fiyat</th><th>Toplam Tutar</th><th>Not</th><th>İşlem</th>
-          </tr></thead>
+          <thead><tr><th>Tarih</th><th>Tip</th><th>kWh</th><th>Birim Fiyat</th><th>Toplam</th><th>Not</th><th></th></tr></thead>
           <tbody id="tableBody"></tbody>
         </table>
       </div>
-      <div id="emptyMsg" class="empty" style="display:none">Bu ay için şarj kaydı bulunamadı.</div>
+      <div id="emptyMsg" class="empty" style="display:none">Bu ay için şarj kaydı yok.</div>
     </div>
   </div>
 
-  <!-- ============================
-       VEHICLES SECTION
-  ============================ -->
+  <!-- ARAÇLARIM -->
   <div id="vehiclesSection" style="display:none">
     <div class="section-box">
-      <h2>
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
-        Kayıtlı Araçlarım
-      </h2>
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/></svg>Kayıtlı Araçlarım</h2>
       <div id="vehiclesList"></div>
     </div>
-
     <div class="section-box">
-      <h2>
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-        Yeni Araç Ekle
-      </h2>
-      <datalist id="makesListAV"></datalist>
-      <datalist id="modelsListAV"></datalist>
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Yeni Araç Ekle</h2>
       <div class="add-vehicle-form">
-        <div class="field">
-          <label>Marka</label>
-          <input type="text" id="avMake" list="makesListAV" placeholder="BYD, Tesla, BMW…"
-            oninput="onMakeInput(this.value,'modelsListAV')">
-        </div>
-        <div class="field">
-          <label>Model</label>
-          <input type="text" id="avModel" list="modelsListAV" placeholder="Atto 3, Model 3…">
-        </div>
-        <div class="field">
-          <label>Yıl</label>
-          <select id="avYear"><option value="">Yıl…</option></select>
-        </div>
-        <button class="btn-add" onclick="addVehicle()" style="margin-top:26px">EKLE</button>
+        <div class="field"><label>Marka</label><select id="avMake"><option value="">Marka seçin…</option></select></div>
+        <div class="field"><label>Model</label><select id="avModel"><option value="">Önce marka seçin…</option></select></div>
+        <div class="field"><label>Yıl</label><select id="avYear"><option value="">Yıl…</option></select></div>
+        <button class="btn-add" style="margin-top:24px" onclick="addVehicle()">EKLE</button>
       </div>
     </div>
   </div>
 
-  <!-- ============================
-       ACCOUNT SECTION
-  ============================ -->
+  <!-- HESABIM -->
   <div id="accountSection" style="display:none">
-    <div class="acc-grid" style="margin-bottom:28px">
-
-      <!-- Info card -->
+    <div class="acc-grid">
       <div class="acc-info-card">
         <h3>Hesap Bilgileri</h3>
         <div class="acc-row"><span class="acc-row-label">Ad Soyad</span><span class="acc-row-val" id="accName">—</span></div>
@@ -1162,8 +1004,6 @@
         <div class="acc-row"><span class="acc-row-label">Şehir</span><span class="acc-row-val" id="accCity">—</span></div>
         <div class="acc-row"><span class="acc-row-label">Cinsiyet</span><span class="acc-row-val" id="accGender">—</span></div>
       </div>
-
-      <!-- Edit card -->
       <div class="acc-info-card">
         <h3>Bilgileri Düzenle</h3>
         <div class="acc-edit-form">
@@ -1174,11 +1014,7 @@
           <div class="acc-edit-grid">
             <div class="field"><label>Doğum Tarihi</label><input type="date" id="editBirthDate"></div>
             <div class="field"><label>Cinsiyet</label>
-              <select id="editGender">
-                <option value="male">Erkek</option>
-                <option value="female">Kadın</option>
-                <option value="other">Diğer</option>
-              </select>
+              <select id="editGender"><option value="male">Erkek</option><option value="female">Kadın</option><option value="other">Diğer</option></select>
             </div>
           </div>
           <div class="field"><label>Şehir</label><input type="text" id="editCity"></div>
@@ -1187,30 +1023,30 @@
       </div>
     </div>
 
-    <!-- Danger zone -->
-    <div class="section-box danger-zone" style="margin-bottom:0">
-      <h3>⚠️ Tehlikeli Bölge</h3>
-      <p>Hesabınızı sildiğinizde <strong>tüm araçlarınız, şarj verileriniz ve kişisel bilgileriniz</strong> kalıcı olarak silinir. Bu işlem geri alınamaz.</p>
-      <button class="btn-delete-account" onclick="deleteAccount()">🗑️ Hesabımı Kalıcı Olarak Sil</button>
+    <!-- Çıkış yap + tehlikeli bölge -->
+    <div class="section-box" style="display:flex;flex-direction:column;gap:18px">
+      <div>
+        <h3 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:11px">Oturum</h3>
+        <button class="btn-logout-big" onclick="logout()">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+          Çıkış Yap
+        </button>
+      </div>
+      <div class="danger-zone">
+        <h3>⚠️ Tehlikeli Bölge</h3>
+        <p>Hesabınızı sildiğinizde <strong>tüm araçlarınız ve şarj verileriniz</strong> kalıcı olarak silinir. Bu işlem geri alınamaz.</p>
+        <button class="btn-delete-account" onclick="deleteAccount()">🗑️ Hesabımı Kalıcı Olarak Sil</button>
+      </div>
     </div>
   </div>
 
 </main>
 </div>
 
-<!-- Toast -->
 <div class="toast" id="toast">
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="#022c22"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="#022c22"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
   <span class="toast-msg">İşlem başarılı!</span>
 </div>
-
-<script type="module">
-  // Show verify email on verify screen
-  import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  const auth2 = getAuth();
-  const emailDisplay = document.getElementById('verifyEmailDisplay');
-  if (auth2.currentUser && emailDisplay) emailDisplay.textContent = auth2.currentUser.email;
-</script>
 
 </body>
 </html>
