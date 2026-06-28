@@ -51,13 +51,16 @@
   };
 
   let currentUser=null,userProfile=null,vehicles=[],selectedVehicleId=null,selectedVehicle=null;
-  let data=[],filter='all',viewYear=new Date().getFullYear(),viewMonth=new Date().getMonth();
-  let unsubCharges=null,unsubVehicles=null;
+  let data=[],campaigns=[],filter='all',viewYear=new Date().getFullYear(),viewMonth=new Date().getMonth();
+  let unsubCharges=null,unsubVehicles=null,unsubCampaigns=null;
 
-  // ─── NET MALİYET & CASHBACK ───────────────────────────────────────────────
+  // ─── MALİYET HESABI ───────────────────────────────────────────────────────
   function grossCost(d){ return d.kwh * d.price; }
-  function cashbackAmount(d){ const g=grossCost(d); return (d.cashbackPct>0) ? g*(d.cashbackPct/100) : 0; }
-  function netCost(d){ return grossCost(d) - cashbackAmount(d); }
+  function pointsAmount(d){ return d.pointsTL || 0; }
+  function afterPoints(d){ return Math.max(grossCost(d) - pointsAmount(d), 0); }
+  function cashbackAmount(d){ return (d.cashbackPct>0) ? afterPoints(d)*(d.cashbackPct/100) : 0; }
+  function netCost(d){ return afterPoints(d) - cashbackAmount(d); }
+  function totalDiscount(d){ return cashbackAmount(d) + pointsAmount(d); }
 
   // ─── AUTH ─────────────────────────────────────────────────────────────────
   onAuthStateChanged(auth, async user => {
@@ -70,9 +73,10 @@
         await loadUserProfile(); showScreen('appContent'); initApp();
       }
     } else {
-      currentUser=null;userProfile=null;vehicles=[];data=[];
+      currentUser=null;userProfile=null;vehicles=[];data=[];campaigns=[];
       if(unsubCharges){unsubCharges();unsubCharges=null;}
       if(unsubVehicles){unsubVehicles();unsubVehicles=null;}
+      if(unsubCampaigns){unsubCampaigns();unsubCampaigns=null;}
       showScreen('loginScreen');
     }
   });
@@ -143,6 +147,7 @@
   window.logout=async function(){
     if(unsubCharges){unsubCharges();unsubCharges=null;}
     if(unsubVehicles){unsubVehicles();unsubVehicles=null;}
+    if(unsubCampaigns){unsubCampaigns();unsubCampaigns=null;}
     await signOut(auth);
   };
 
@@ -190,6 +195,8 @@
         for(const c of cSnap.docs) await deleteDoc(c.ref);
         await deleteDoc(v.ref);
       }
+      const campSnap=await getDocs(collection(db,'users',currentUser.uid,'campaigns'));
+      for(const c of campSnap.docs) await deleteDoc(c.ref);
       await deleteDoc(doc(db,'users',currentUser.uid));await deleteUser(currentUser);
     }catch(e){alert('Hata: '+e.message);}
   };
@@ -282,14 +289,16 @@
     const kwh=parseFloat(document.getElementById('fKwh').value);
     const price=parseFloat(document.getElementById('fPrice').value);
     const cashbackPct=parseFloat(document.getElementById('fCashback').value)||0;
+    const pointsTL=parseFloat(document.getElementById('fPoints').value)||0;
     const cardName=document.getElementById('fCard').value.trim();
     const note=document.getElementById('fNote').value.trim();
     if(!date||isNaN(kwh)||kwh<=0||isNaN(price)||price<0){alert('Tarih, enerji ve birim fiyat alanlarını doldurun.');return;}
     try{
       await addDoc(collection(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges'),
-        {date,type,kwh,price,cashbackPct,cardName,note,createdAt:serverTimestamp()});
+        {date,type,kwh,price,cashbackPct,pointsTL,cardName,note,createdAt:serverTimestamp()});
       document.getElementById('fKwh').value='';
       document.getElementById('fCashback').value='';
+      document.getElementById('fPoints').value='';
       document.getElementById('fCard').value='';
       document.getElementById('fNote').value='';
       showToast('Kayıt eklendi!');
@@ -316,10 +325,10 @@
   window.exportCSV=function(){
     if(!data.length){alert('Dışa aktarılacak kayıt bulunamadı.');return;}
     let csv="text/csv;charset=utf-8,\uFEFF";
-    csv+="Tarih,Tip,Enerji (kWh),Birim Fiyat (TL),Brüt Tutar (TL),Cashback (%),Cashback (TL),Net Tutar (TL),Kart,Not\n";
+    csv+="Tarih,Tip,Enerji (kWh),Birim Fiyat (TL),Brüt Tutar (TL),Cashback (%),Cashback (TL),Puan (TL),Net Tutar (TL),Kart,Not\n";
     [...data].sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(r=>{
-      const gross=grossCost(r);const cb=cashbackAmount(r);const net=netCost(r);
-      csv+=`${r.date},${r.type},${r.kwh.toFixed(2)},${r.price.toFixed(2)},${gross.toFixed(2)},${(r.cashbackPct||0).toFixed(2)},${cb.toFixed(2)},${net.toFixed(2)},${(r.cardName||'').replace(/,/g,' ')},${(r.note||'').replace(/,/g,' ')}\n`;
+      const gross=grossCost(r);const cb=cashbackAmount(r);const pts=pointsAmount(r);const net=netCost(r);
+      csv+=`${r.date},${r.type},${r.kwh.toFixed(2)},${r.price.toFixed(2)},${gross.toFixed(2)},${(r.cashbackPct||0).toFixed(2)},${cb.toFixed(2)},${pts.toFixed(2)},${net.toFixed(2)},${(r.cardName||'').replace(/,/g,' ')},${(r.note||'').replace(/,/g,' ')}\n`;
     });
     const link=document.createElement('a');link.href=encodeURI(csv);
     link.download=`${selectedVehicle?.make||'ev'}_${selectedVehicle?.model||'sarj'}.csv`;
@@ -341,7 +350,7 @@
         const note=p.slice(5).join(',').trim()||p[4]?.trim()||'';
         if(!date||isNaN(kwh)||isNaN(price)) continue;
         await addDoc(collection(db,'users',currentUser.uid,'vehicles',selectedVehicleId,'charges'),
-          {date,type,kwh,price,cashbackPct:0,cardName:'',note,createdAt:serverTimestamp()});
+          {date,type,kwh,price,cashbackPct:0,pointsTL:0,cardName:'',note,createdAt:serverTimestamp()});
         count++;
       }
       if(count>0) showToast(`${count} kayıt eklendi!`);
@@ -349,33 +358,143 @@
     };input.click();
   };
 
+  // ─── CAMPAIGNS ────────────────────────────────────────────────────────────
+  function listenCampaigns(){
+    if(!currentUser) return;
+    if(unsubCampaigns) unsubCampaigns();
+    const ref=collection(db,'users',currentUser.uid,'campaigns');
+    const q=query(ref,orderBy('addedAt','desc'));
+    unsubCampaigns=onSnapshot(q,snap=>{
+      campaigns=snap.docs.map(d=>({firebaseId:d.id,...d.data()}));
+      renderCampaigns();
+    },err=>{console.error('Campaigns error:',err.code,err.message);});
+  }
+
+  window.addCampaign=async function(){
+    const name=document.getElementById('campName').value.trim();
+    const url=document.getElementById('campUrl').value.trim();
+    const terms=document.getElementById('campTerms').value.trim();
+    const expiry=document.getElementById('campExpiry').value;
+    const cashbackRate=parseFloat(document.getElementById('campCashback').value)||0;
+    if(!name){alert('Kampanya adı gerekli.');return;}
+    try{
+      await addDoc(collection(db,'users',currentUser.uid,'campaigns'),
+        {name,url,terms,expiry,cashbackRate,addedAt:serverTimestamp()});
+      document.getElementById('campName').value='';
+      document.getElementById('campUrl').value='';
+      document.getElementById('campTerms').value='';
+      document.getElementById('campExpiry').value='';
+      document.getElementById('campCashback').value='';
+      showToast('Kampanya eklendi!');
+    }catch(e){alert('Hata: '+e.message);}
+  };
+
+  window.deleteCampaign=async function(fid){
+    if(!confirm('Bu kampanyayı silmek istiyor musunuz?')) return;
+    try{await deleteDoc(doc(db,'users',currentUser.uid,'campaigns',fid));}
+    catch(e){alert('Hata: '+e.message);}
+  };
+
+  function renderCampaigns(){
+    const el=document.getElementById('campaignsList');if(!el) return;
+    if(!campaigns.length){
+      el.innerHTML='<div class="empty-campaigns">Henüz kampanya eklenmedi. Aşağıdan ekleyebilirsiniz.</div>';
+      return;
+    }
+    const today=new Date();today.setHours(0,0,0,0);
+    el.innerHTML=campaigns.map(c=>{
+      const isExpired=c.expiry&&new Date(c.expiry)<today;
+      const daysLeft=c.expiry?Math.ceil((new Date(c.expiry)-today)/(1000*60*60*24)):null;
+      let expiryBadge='';
+      if(c.expiry){
+        if(isExpired) expiryBadge=`<span class="camp-badge camp-expired">Süresi Doldu</span>`;
+        else if(daysLeft<=7) expiryBadge=`<span class="camp-badge camp-soon">${daysLeft} gün kaldı</span>`;
+        else expiryBadge=`<span class="camp-badge camp-active">${new Date(c.expiry).toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'})}'e kadar</span>`;
+      }
+      return `<div class="camp-card ${isExpired?'camp-card-expired':''}">
+        <div class="camp-card-top">
+          <div class="camp-info">
+            <div class="camp-name">${c.name}</div>
+            <div class="camp-meta">
+              ${c.cashbackRate>0?`<span class="camp-rate">%${c.cashbackRate} cashback</span>`:''}
+              ${expiryBadge}
+            </div>
+          </div>
+          <div class="camp-actions">
+            ${c.url?`<a href="${c.url}" target="_blank" rel="noopener" class="camp-link-btn">🔗 Kampanya Linki</a>`:''}
+            <button class="del-btn" onclick="deleteCampaign('${c.firebaseId}')" title="Sil"><svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>
+          </div>
+        </div>
+        ${c.terms?`<div class="camp-terms">📋 ${c.terms}</div>`:''}
+      </div>`;
+    }).join('');
+  }
+
   // ─── RENDER ───────────────────────────────────────────────────────────────
   window.renderAll=function(){
     const ml=document.getElementById('monthLabel');const yt=document.getElementById('yearTitle');
     if(ml) ml.textContent=MONTHS_TR[viewMonth]+' '+viewYear;if(yt) yt.textContent=viewYear;
     const km=selectedVehicle?.km||0;const ki=document.getElementById('fCurrentKm');
     if(ki&&!ki.dataset.userEdited) ki.value=km||'';
-    renderStats();renderGlobal();renderTable();renderBars();
+    renderStats();renderGlobal();renderTable();renderBars();renderDiscountSummary();
   };
 
   window.renderGlobal=function(){
     const km=selectedVehicle?.km||0;
     const yd=data.filter(d=>new Date(d.date).getFullYear()===viewYear);
     const yK=yd.reduce((s,d)=>s+d.kwh,0);
-    const yC=yd.reduce((s,d)=>s+netCost(d),0);   // NET
-    const aC=data.reduce((s,d)=>s+netCost(d),0);  // NET (tüm zamanlar, km başına)
+    const yC=yd.reduce((s,d)=>s+netCost(d),0);
+    const aC=data.reduce((s,d)=>s+netCost(d),0);
     animateValue('valTlKm',0,km>0?(aC/km):0,400);
     animateValue('valYearKwh',0,yK,400);
     animateValue('valYearCost',0,yC,400);
+  };
+
+  window.renderDiscountSummary=function(){
+    const totalCB=data.reduce((s,d)=>s+cashbackAmount(d),0);
+    const totalPts=data.reduce((s,d)=>s+pointsAmount(d),0);
+    const totalDisc=totalCB+totalPts;
+    const mCB=data.filter(d=>{const dt=new Date(d.date);return dt.getFullYear()===viewYear&&dt.getMonth()===viewMonth;}).reduce((s,d)=>s+cashbackAmount(d),0);
+    const mPts=data.filter(d=>{const dt=new Date(d.date);return dt.getFullYear()===viewYear&&dt.getMonth()===viewMonth;}).reduce((s,d)=>s+pointsAmount(d),0);
+    const el=document.getElementById('discountSummary');if(!el) return;
+    el.innerHTML=`
+      <div class="disc-card disc-cb">
+        <div class="disc-icon">💳</div>
+        <div class="disc-body">
+          <div class="disc-label">Toplam Cashback</div>
+          <div class="disc-val">₺${totalCB.toFixed(2)}</div>
+          <div class="disc-sub">Bu ay: ₺${mCB.toFixed(2)}</div>
+        </div>
+      </div>
+      <div class="disc-card disc-pts">
+        <div class="disc-icon">⭐</div>
+        <div class="disc-body">
+          <div class="disc-label">Toplam Puan</div>
+          <div class="disc-val">₺${totalPts.toFixed(2)}</div>
+          <div class="disc-sub">Bu ay: ₺${mPts.toFixed(2)}</div>
+        </div>
+      </div>
+      <div class="disc-card disc-total">
+        <div class="disc-icon">🎯</div>
+        <div class="disc-body">
+          <div class="disc-label">Toplam İndirimim</div>
+          <div class="disc-val" style="color:var(--green)">₺${totalDisc.toFixed(2)}</div>
+          <div class="disc-sub">Bu ay: ₺${(mCB+mPts).toFixed(2)}</div>
+        </div>
+      </div>`;
   };
 
   window.renderStats=function(){
     const md=data.filter(d=>{const dt=new Date(d.date);return dt.getFullYear()===viewYear&&dt.getMonth()===viewMonth;});
     const ac=md.filter(d=>d.type==='AC'),dc=md.filter(d=>d.type==='DC');
     const tK=md.reduce((s,d)=>s+d.kwh,0);
-    const tC=md.reduce((s,d)=>s+netCost(d),0);          // NET toplam maliyet
-    const tCB=md.reduce((s,d)=>s+cashbackAmount(d),0);  // toplam kazanılan cashback
+    const tC=md.reduce((s,d)=>s+netCost(d),0);
+    const tCB=md.reduce((s,d)=>s+cashbackAmount(d),0);
+    const tPts=md.reduce((s,d)=>s+pointsAmount(d),0);
     const aK=ac.reduce((s,d)=>s+d.kwh,0),dK=dc.reduce((s,d)=>s+d.kwh,0);
+    const discInfo=tCB>0||tPts>0
+      ?`💰 ₺${(tCB+tPts).toFixed(2)} indirim (CB:₺${tCB.toFixed(0)} + Puan:₺${tPts.toFixed(0)})`
+      :tK>0?`~₺${(tC/tK).toFixed(2)}/kWh ort.`:'—';
     document.getElementById('stats').innerHTML=`
       <div class="stat-card total">
         <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>Aylık Toplam Şarj</div>
@@ -395,7 +514,7 @@
       <div class="stat-card cost-card">
         <div class="stat-label"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>Aylık Net Maliyet</div>
         <div class="stat-value"><span id="animTotCost" style="color:inherit;font-size:inherit;margin:0">0.00</span><span>₺</span></div>
-        <div class="stat-sub">${tCB>0?'💳 ₺'+tCB.toFixed(2)+' cashback kazanıldı':tK>0?'~₺'+(tC/tK).toFixed(2)+'/kWh ort.':'—'}</div>
+        <div class="stat-sub">${discInfo}</div>
       </div>`;
     setTimeout(()=>{
       animateValue('animTotKwh',0,tK,400);animateValue('animAcKwh',0,aK,400);
@@ -414,14 +533,17 @@
     const dcI=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2L6 9h5v13l9-12h-6l2.5-8z"/></svg>`;
     const dI=`<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
     tbody.innerHTML=md.map(d=>{
-      const gross=grossCost(d);const cb=cashbackAmount(d);const net=netCost(d);
-      const hasCB=d.cashbackPct>0;const hasCard=d.cardName&&d.cardName.trim()!=='';
-      // Net tutar hücresi: cashback varsa üstü çizgili brüt + net, yoksa sadece brüt
-      const costCell=hasCB
+      const gross=grossCost(d);const cb=cashbackAmount(d);const pts=pointsAmount(d);const net=netCost(d);
+      const hasDisc=(d.cashbackPct>0||pts>0);
+      const hasCard=d.cardName&&d.cardName.trim()!=='';
+      const costCell=hasDisc
         ?`<div><span style="color:var(--green);font-weight:800;font-size:14px">₺${net.toFixed(2)}</span></div><div style="color:var(--muted);font-size:11px;text-decoration:line-through;margin-top:1px">₺${gross.toFixed(2)}</div>`
         :`<span style="color:var(--green);font-weight:800;font-size:15px">₺${gross.toFixed(2)}</span>`;
-      const cbCell=hasCB
+      const cbCell=d.cashbackPct>0
         ?`<span class="badge-cashback">%${d.cashbackPct} · -₺${cb.toFixed(2)}</span>`
+        :`<span style="color:var(--muted);font-size:12px">—</span>`;
+      const ptsCell=pts>0
+        ?`<span class="badge-points">⭐ -₺${pts.toFixed(2)}</span>`
         :`<span style="color:var(--muted);font-size:12px">—</span>`;
       const cardCell=hasCard
         ?`<span class="badge-card">💳 ${d.cardName}</span>`
@@ -433,6 +555,7 @@
         <td>₺${d.price.toFixed(2)}</td>
         <td>${costCell}</td>
         <td>${cbCell}</td>
+        <td>${ptsCell}</td>
         <td>${cardCell}</td>
         <td style="color:var(--muted);font-size:12px;font-family:'Outfit',sans-serif;font-weight:600;text-transform:uppercase">${d.note||'—'}</td>
         <td><button class="del-btn" onclick="deleteCharge('${d.firebaseId}')">${dI}</button></td>
@@ -492,13 +615,16 @@
   };
 
   window.showNavSection=function(id){
-    ['chargingSection','vehiclesSection','accountSection'].forEach(s=>{const el=document.getElementById(s);if(el) el.style.display='none';});
+    ['chargingSection','vehiclesSection','campaignsSection','accountSection'].forEach(s=>{
+      const el=document.getElementById(s);if(el) el.style.display='none';
+    });
     document.getElementById(id).style.display='block';
     document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-    const map={chargingSection:'navCharging',vehiclesSection:'navVehicles',accountSection:'navAccount'};
+    const map={chargingSection:'navCharging',vehiclesSection:'navVehicles',campaignsSection:'navCampaigns',accountSection:'navAccount'};
     document.getElementById(map[id])?.classList.add('active');
     if(id==='accountSection') renderAccountSection();
     if(id==='vehiclesSection'){renderVehiclesSection();fillBrandSelect('avMake','avModel');}
+    if(id==='campaignsSection') renderCampaigns();
   };
 
   window.showToast=function(msg='İşlem başarılı!'){
@@ -542,6 +668,9 @@ service cloud.firestore {
           allow read, write: if request.auth != null && request.auth.uid == userId;
         }
       }
+      match /campaigns/{campaignId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
   }
 }</pre>
@@ -560,7 +689,7 @@ service cloud.firestore {
   }
   function initApp(){
     document.getElementById('fDate').valueAsDate=new Date();
-    showNavSection('chargingSection');renderAll();listenVehicles();
+    showNavSection('chargingSection');renderAll();listenVehicles();listenCampaigns();
   }
   document.addEventListener('DOMContentLoaded',()=>{
     buildYearOptions('rCarYear');buildYearOptions('avYear');fillBrandSelect('rCarMake','rCarModel');
@@ -573,7 +702,7 @@ service cloud.firestore {
     --bg:#030712;--panel:#111827;--panel-hover:#1f2937;--panel2:#0f172a;
     --border:rgba(255,255,255,.08);--ac:#00e5ff;--dc:#ff6b35;--green:#00ff88;
     --text:#f8fafc;--muted:#94a3b8;--accent:#3b82f6;--radius:16px;
-    --danger:#ef4444;--cashback:#a78bfa;
+    --danger:#ef4444;--cashback:#a78bfa;--points:#fbbf24;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-height:100vh;overflow-x:hidden;}
@@ -653,16 +782,32 @@ service cloud.firestore {
   .stat-value span{font-size:13px;color:var(--muted);font-weight:500;margin-left:4px;}
   .stat-sub{font-size:11px;color:var(--muted);margin-top:9px;font-family:'JetBrains Mono',monospace;font-weight:500;}
 
-  /* FORM — 8 sütun: tarih | tip | kwh | birim fiyat | cashback% | kart | not | btn */
-  .form-row{display:grid;grid-template-columns:130px 100px 110px 130px 90px 150px 1fr auto;gap:10px;align-items:end;}
+  /* İNDİRİM ÖZETİ */
+  #discountSummary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;}
+  .disc-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;display:flex;align-items:center;gap:16px;transition:all .2s;}
+  .disc-card:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.25);}
+  .disc-card.disc-cb{border-color:rgba(167,139,250,.2);background:rgba(167,139,250,.04);}
+  .disc-card.disc-pts{border-color:rgba(251,191,36,.2);background:rgba(251,191,36,.04);}
+  .disc-card.disc-total{border-color:rgba(0,255,136,.2);background:rgba(0,255,136,.04);}
+  .disc-icon{font-size:28px;flex-shrink:0;}
+  .disc-body{flex:1;}
+  .disc-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:5px;}
+  .disc-val{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:800;color:var(--cashback);}
+  .disc-card.disc-pts .disc-val{color:var(--points);}
+  .disc-card.disc-total .disc-val{color:var(--green);}
+  .disc-sub{font-size:11px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace;}
+
+  /* FORM */
+  .form-row{display:grid;grid-template-columns:120px 90px 100px 120px 80px 80px 130px 1fr auto;gap:9px;align-items:end;}
   .form-row-km{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:18px;align-items:end;}
   .field{display:flex;flex-direction:column;gap:8px;}
   .field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;}
   .field input,.field select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;outline:none;transition:all .2s;width:100%;}
   .field input:focus,.field select:focus{border-color:var(--ac);}
-  /* cashback & kart alanları mor temayla */
   #fCashback{border-color:rgba(167,139,250,.35);color:var(--cashback);}
   #fCashback:focus{border-color:var(--cashback);}
+  #fPoints{border-color:rgba(251,191,36,.35);color:var(--points);}
+  #fPoints:focus{border-color:var(--points);}
   #fCard{border-color:rgba(167,139,250,.25);}
   #fCard:focus{border-color:var(--cashback);}
   .btn-add{background:linear-gradient(90deg,var(--ac),var(--accent));border:none;color:#000;border-radius:10px;padding:0 20px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .2s;height:46px;display:flex;align-items:center;justify-content:center;gap:7px;text-transform:uppercase;letter-spacing:1px;}
@@ -692,8 +837,8 @@ service cloud.firestore {
   .badge svg{width:11px;height:11px;}
   .badge-ac{background:rgba(0,229,255,.1);color:var(--ac);border:1px solid rgba(0,229,255,.3);}
   .badge-dc{background:rgba(255,107,53,.1);color:var(--dc);border:1px solid rgba(255,107,53,.3);}
-  /* YENİ — cashback & kart badge */
   .badge-cashback{display:inline-block;background:rgba(167,139,250,.12);color:var(--cashback);border:1px solid rgba(167,139,250,.35);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+  .badge-points{display:inline-block;background:rgba(251,191,36,.1);color:var(--points);border:1px solid rgba(251,191,36,.3);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   .badge-card{display:inline-block;background:rgba(167,139,250,.08);color:#c4b5fd;border:1px solid rgba(167,139,250,.25);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;font-family:'Outfit',sans-serif;white-space:nowrap;}
   .del-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:5px;border-radius:6px;transition:all .2s;}
   .del-btn svg{width:18px;height:18px;fill:currentColor;}
@@ -725,6 +870,27 @@ service cloud.firestore {
   .btn-sel-v.btn-sel-active{background:rgba(0,229,255,.1);border-color:var(--ac);color:var(--ac);}
   .add-vehicle-form{display:grid;grid-template-columns:1fr 1fr 110px auto;gap:13px;align-items:end;}
 
+  /* KAMPANYALAR */
+  .camp-add-form{display:grid;grid-template-columns:1fr 1fr 90px 120px auto;gap:12px;align-items:end;}
+  .camp-terms-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-top:12px;}
+  .camp-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:10px;transition:all .2s;}
+  .camp-card:hover{border-color:rgba(255,255,255,.14);}
+  .camp-card-expired{opacity:.55;}
+  .camp-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .camp-info{flex:1;}
+  .camp-name{font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;}
+  .camp-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .camp-rate{display:inline-block;background:rgba(167,139,250,.12);color:var(--cashback);border:1px solid rgba(167,139,250,.3);border-radius:6px;padding:3px 9px;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+  .camp-badge{display:inline-block;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;font-family:'Outfit',sans-serif;}
+  .camp-active{background:rgba(0,255,136,.1);color:var(--green);border:1px solid rgba(0,255,136,.3);}
+  .camp-soon{background:rgba(251,191,36,.1);color:var(--points);border:1px solid rgba(251,191,36,.3);}
+  .camp-expired{background:rgba(239,68,68,.08);color:#f87171;border:1px solid rgba(239,68,68,.25);}
+  .camp-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .camp-link-btn{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:var(--accent);border-radius:7px;padding:6px 12px;font-size:12px;font-family:'Outfit',sans-serif;font-weight:700;text-decoration:none;transition:all .2s;white-space:nowrap;}
+  .camp-link-btn:hover{background:rgba(59,130,246,.2);border-color:var(--accent);}
+  .camp-terms{font-size:12px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--border);line-height:1.6;font-family:'Outfit',sans-serif;}
+  .empty-campaigns{padding:36px;text-align:center;color:var(--muted);font-size:14px;}
+
   .acc-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;}
   .acc-info-card{background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:20px 24px;}
   .acc-info-card h3{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:16px;}
@@ -747,12 +913,15 @@ service cloud.firestore {
   .toast{position:fixed;bottom:22px;right:22px;background:var(--green);color:#022c22;padding:12px 20px;border-radius:10px;font-weight:800;font-size:14px;transform:translateY(100px);opacity:0;transition:all .4s ease-out;z-index:9999;display:flex;align-items:center;gap:8px;}
   .toast.show{transform:translateY(0);opacity:1;}
 
-  @media(max-width:1100px){
-    .form-row{grid-template-columns:1fr 1fr 1fr 1fr;}
-    .form-row .btn-add{grid-column:span 4;}
+  @media(max-width:1200px){
+    .form-row{grid-template-columns:1fr 1fr 1fr 1fr 1fr;}
+    .form-row .btn-add{grid-column:span 5;}
+    .camp-add-form{grid-template-columns:1fr 1fr 1fr;}
+    .camp-add-form .btn-add{grid-column:span 3;}
   }
   @media(max-width:960px){
     .stats{grid-template-columns:repeat(2,1fr);}
+    #discountSummary{grid-template-columns:1fr;}
     .form-row-km{grid-template-columns:1fr 1fr;}
     .acc-grid{grid-template-columns:1fr;}
     .add-vehicle-form{grid-template-columns:1fr 1fr;}
@@ -767,6 +936,7 @@ service cloud.firestore {
   @media(max-width:600px){
     .header-nav .nav-tab span.nav-label{display:none;}
     .nav-tab{padding:8px 10px;}
+    #discountSummary{grid-template-columns:1fr;}
   }
   @media(max-width:540px){
     .stats{grid-template-columns:1fr;}
@@ -778,6 +948,9 @@ service cloud.firestore {
     .auth-grid2{grid-template-columns:1fr;}
     .acc-edit-grid{grid-template-columns:1fr;}
     .add-vehicle-form{grid-template-columns:1fr;}
+    .camp-card-top{flex-direction:column;}
+    .camp-add-form{grid-template-columns:1fr;}
+    .camp-add-form .btn-add{grid-column:span 1;}
   }
 </style>
 </head>
@@ -860,6 +1033,9 @@ service cloud.firestore {
       <button class="nav-tab active" id="navCharging" onclick="showNavSection('chargingSection')">
         <svg viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg><span class="nav-label">Şarj Takip</span>
       </button>
+      <button class="nav-tab" id="navCampaigns" onclick="showNavSection('campaignsSection')">
+        <svg viewBox="0 0 24 24"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.89.5 13.26.5c-1.44 0-2.7.67-3.56 1.71L12 5.47l2.3-3.26C14.86 1.6 15.5 1.5 16 1.5c1.24 0 2 .83 2 1.15 0 .5-.23 1.03-.68 1.35H10c-.55 0-1 .45-1 1v12c0 .55.45 1 1 1h10c.55 0 1-.45 1-1V7c0-.55-.45-1-1-1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm14 8h-4v-2h4v2zm0-4h-4V8h4v2z"/></svg><span class="nav-label">Kampanyalar</span>
+      </button>
       <button class="nav-tab" id="navVehicles" onclick="showNavSection('vehiclesSection')">
         <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg><span class="nav-label">Araçlarım</span>
       </button>
@@ -872,6 +1048,7 @@ service cloud.firestore {
 </header>
 
 <main>
+  <!-- ŞARJ TAKİP -->
   <div id="chargingSection">
     <div class="month-row">
       <div class="month-row-title"><svg class="icon-svg" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>Aylık Şarj Özeti</div>
@@ -881,6 +1058,9 @@ service cloud.firestore {
     </div>
 
     <div class="stats" id="stats"></div>
+
+    <!-- İNDİRİM ÖZETİ -->
+    <div id="discountSummary"></div>
 
     <div class="section-box">
       <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>Araç Durumu &amp; Yıllık Özet (<span id="yearTitle">—</span>)</h2>
@@ -902,7 +1082,7 @@ service cloud.firestore {
       </div>
     </div>
 
-    <!-- YENİ ŞARJ EKLE — cashback & kart alanları dahil -->
+    <!-- YENİ ŞARJ EKLE -->
     <div class="section-box">
       <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Yeni Şarj Ekle</h2>
       <div class="form-row">
@@ -910,14 +1090,15 @@ service cloud.firestore {
         <div class="field"><label>Şarj Tipi</label><select id="fType"><option value="AC">AC (Yavaş)</option><option value="DC">DC (Hızlı)</option></select></div>
         <div class="field"><label>Enerji (kWh)</label><input type="number" id="fKwh" placeholder="0.00" step="0.01" min="0"></div>
         <div class="field"><label>Birim Fiyat (₺/kWh)</label><input type="number" id="fPrice" placeholder="0.00" step="0.01" min="0"></div>
-        <div class="field"><label>Cashback %</label><input type="number" id="fCashback" placeholder="0" step="0.1" min="0" max="100"></div>
+        <div class="field"><label style="color:var(--cashback)">Cashback %</label><input type="number" id="fCashback" placeholder="0" step="0.1" min="0" max="100"></div>
+        <div class="field"><label style="color:var(--points)">Puan (₺)</label><input type="number" id="fPoints" placeholder="0.00" step="0.01" min="0"></div>
         <div class="field"><label>Banka / Kart</label><input type="text" id="fCard" placeholder="Garanti, Yapı Kredi…"></div>
         <div class="field"><label>Not (Opsiyonel)</label><input type="text" id="fNote" placeholder="Ev, ZES, Eşarj…"></div>
         <button class="btn-add" onclick="addCharge()">KAYDET</button>
       </div>
     </div>
 
-    <!-- TABLO — Net Tutar + Cashback + Kart sütunları -->
+    <!-- TABLO -->
     <div class="section-box table-section">
       <div class="table-header">
         <h2 style="margin:0">Şarj Kayıtları</h2>
@@ -942,6 +1123,7 @@ service cloud.firestore {
               <th>Tarih</th><th>Tip</th><th>kWh</th><th>Birim Fiyat</th>
               <th>Net Tutar</th>
               <th style="color:var(--cashback)">Cashback</th>
+              <th style="color:var(--points)">Puan</th>
               <th style="color:var(--cashback)">Kart</th>
               <th>Not</th><th></th>
             </tr>
@@ -950,6 +1132,28 @@ service cloud.firestore {
         </table>
       </div>
       <div id="emptyMsg" class="empty" style="display:none">Bu ay için şarj kaydı yok.</div>
+    </div>
+  </div>
+
+  <!-- KAMPANYALAR -->
+  <div id="campaignsSection" style="display:none">
+    <div class="section-box">
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.89.5 13.26.5c-1.44 0-2.7.67-3.56 1.71L12 5.47l2.3-3.26C14.86 1.6 15.5 1.5 16 1.5c1.24 0 2 .83 2 1.15 0 .5-.23 1.03-.68 1.35H10c-.55 0-1 .45-1 1v12c0 .55.45 1 1 1h10c.55 0 1-.45 1-1V7c0-.55-.45-1-1-1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm14 8h-4v-2h4v2zm0-4h-4V8h4v2z"/></svg>Aktif Kampanyalarım</h2>
+      <div id="campaignsList"><div class="empty-campaigns">Yükleniyor…</div></div>
+    </div>
+
+    <div class="section-box">
+      <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Yeni Kampanya Ekle</h2>
+      <div class="camp-add-form">
+        <div class="field"><label>Kampanya Adı</label><input type="text" id="campName" placeholder="Garanti EV Cashback, ZES %20…"></div>
+        <div class="field"><label>Cashback Oranı (%)</label><input type="number" id="campCashback" placeholder="0" step="0.1" min="0" max="100" style="border-color:rgba(167,139,250,.35);color:var(--cashback)"></div>
+        <div class="field"><label>Son Kullanma Tarihi</label><input type="date" id="campExpiry"></div>
+        <div class="field"><label>Kampanya Linki</label><input type="text" id="campUrl" placeholder="https://..."></div>
+        <button class="btn-add" onclick="addCampaign()">EKLE</button>
+      </div>
+      <div class="camp-terms-row" style="margin-top:14px">
+        <div class="field"><label>Şartlar / Notlar</label><input type="text" id="campTerms" placeholder="Min. 500 ₺ harcama, ilk 3 ay geçerli, sadece DC şarj…"></div>
+      </div>
     </div>
   </div>
 
@@ -1009,7 +1213,7 @@ service cloud.firestore {
       </div>
       <div class="danger-zone">
         <h3>⚠️ Tehlikeli Bölge</h3>
-        <p>Hesabınızı sildiğinizde <strong>tüm araçlarınız ve şarj verileriniz</strong> kalıcı olarak silinir. Bu işlem geri alınamaz.</p>
+        <p>Hesabınızı sildiğinizde <strong>tüm araçlarınız, şarj verileriniz ve kampanyalarınız</strong> kalıcı olarak silinir. Bu işlem geri alınamaz.</p>
         <button class="btn-delete-account" onclick="deleteAccount()">Hesabımı Kalıcı Olarak Sil</button>
       </div>
     </div>
